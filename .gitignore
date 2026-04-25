@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+.idea/
+*.db
+*.sqlite3
+.venv/
+venv/
+dist/
+*.local
