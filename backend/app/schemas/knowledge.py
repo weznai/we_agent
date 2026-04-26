@@ -58,6 +58,8 @@ class KnowledgeResponse(BaseModel):
     chunk_count: int
     status: str
     indexed: bool
+    parse_method: str = ""
+    mineru_output_dir: str = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -78,6 +80,10 @@ class KnowledgeSearchResult(BaseModel):
     content: str
     score: float
     chunk_index: int
+    chunk_type: str = "text"
+    page_idx: Optional[int] = None
+    content_path: Optional[str] = None
+    image_path: Optional[str] = None
 
 
 class KnowledgeSettingsUpdate(BaseModel):
@@ -140,3 +146,20 @@ class FileChunksResponse(BaseModel):
     file_name: str
     total_chunks: int
     chunks: List[ChunkInfo]
+
+
+class RAGQueryRequest(BaseModel):
+    query: str
+    group_id: Optional[int] = None
+    top_k: Optional[int] = 5
+    model_id: Optional[int] = None
+
+
+class ChunkDetailInfo(BaseModel):
+    chunk_index: int
+    content: str
+    char_count: int
+    chunk_type: str = "text"
+    page_idx: Optional[int] = None
+    content_path: Optional[str] = None
+    image_path: Optional[str] = None

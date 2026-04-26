@@ -74,6 +74,52 @@ if 'knowledge_settings' in _tbl_inspect.get_table_names():
         finally:
             _conn.close()
 
+if 'knowledge_chunks' in _tbl_inspect.get_table_names():
+    _chunk_col_names = [c['name'] for c in _tbl_inspect.get_columns('knowledge_chunks')]
+    _new_chunk_cols = []
+    if 'chunk_type' not in _chunk_col_names:
+        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN chunk_type VARCHAR(20) DEFAULT 'text'")
+    if 'page_idx' not in _chunk_col_names:
+        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN page_idx INTEGER")
+    if 'content_path' not in _chunk_col_names:
+        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN content_path VARCHAR(500) DEFAULT ''")
+    if 'image_path' not in _chunk_col_names:
+        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN image_path VARCHAR(500) DEFAULT ''")
+    if 'metadata_json' not in _chunk_col_names:
+        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN metadata_json TEXT")
+    if _new_chunk_cols:
+        _conn = engine.raw_connection()
+        try:
+            _cur = _conn.cursor()
+            for sql in _new_chunk_cols:
+                _cur.execute(sql)
+            _conn.commit()
+            logger.info(f"Migrated knowledge_chunks: added {len(_new_chunk_cols)} columns")
+        except Exception as e:
+            logger.warning(f"Migration skipped (knowledge_chunks): {e}")
+        finally:
+            _conn.close()
+
+if 'knowledge_bases' in _tbl_inspect.get_table_names():
+    _kb_col_names = [c['name'] for c in _tbl_inspect.get_columns('knowledge_bases')]
+    _new_kb_cols = []
+    if 'parse_method' not in _kb_col_names:
+        _new_kb_cols.append("ALTER TABLE knowledge_bases ADD COLUMN parse_method VARCHAR(20) DEFAULT ''")
+    if 'mineru_output_dir' not in _kb_col_names:
+        _new_kb_cols.append("ALTER TABLE knowledge_bases ADD COLUMN mineru_output_dir VARCHAR(500) DEFAULT ''")
+    if _new_kb_cols:
+        _conn = engine.raw_connection()
+        try:
+            _cur = _conn.cursor()
+            for sql in _new_kb_cols:
+                _cur.execute(sql)
+            _conn.commit()
+            logger.info(f"Migrated knowledge_bases: added {len(_new_kb_cols)} columns")
+        except Exception as e:
+            logger.warning(f"Migration skipped (knowledge_bases): {e}")
+        finally:
+            _conn.close()
+
 logger.info("Database initialized, tables created")
 
 
@@ -130,6 +176,10 @@ app.include_router(order_agent.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+mineru_output_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output")
+if os.path.exists(mineru_output_dir):
+    app.mount("/mineru-output", StaticFiles(directory=mineru_output_dir), name="mineru_output")
 
 
 @app.get("/api/health")

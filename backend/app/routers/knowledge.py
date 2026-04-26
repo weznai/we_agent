@@ -1,5 +1,7 @@
+import json
 import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -20,6 +22,7 @@ from ..schemas.knowledge import (
     RecallTestRequest,
     RecallTestResult,
     FileChunksResponse,
+    RAGQueryRequest,
 )
 from ..services import knowledge_service
 from ..utils.logger import get_logger
@@ -203,3 +206,67 @@ async def recall_test(
     db: Session = Depends(get_db),
 ):
     return knowledge_service.recall_test(current_user.id, req.query, req.top_k, db, group_id=req.group_id)
+
+
+@router.post("/rag/search")
+async def rag_search(
+    req: RAGQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    results = knowledge_service.rag_search_with_chunks(
+        current_user.id, req.query, req.group_id, req.top_k or 5, db
+    )
+    return {
+        "query": req.query,
+        "results": [r.model_dump() for r in results],
+        "total": len(results),
+    }
+
+
+@router.post("/rag/answer-stream")
+async def rag_answer_stream(
+    req: RAGQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    search_results = knowledge_service.rag_search_with_chunks(
+        current_user.id, req.query, req.group_id, req.top_k or 5, db
+    )
+
+    async def event_generator():
+        search_data = json.dumps({
+            "type": "search_results",
+            "results": [r.model_dump() for r in search_results],
+            "total": len(search_results),
+        }, ensure_ascii=False)
+        yield f"data: {search_data}\n\n"
+
+        full_content = ""
+        try:
+            async for chunk in knowledge_service.rag_answer_stream(
+                current_user.id,
+                req.query,
+                search_results,
+                db,
+                model_id=req.model_id,
+            ):
+                full_content += chunk
+                data = json.dumps({"type": "chunk", "content": chunk}, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+        except Exception as e:
+            logger.error(f"[RAG Stream] Error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            return
+
+        yield f"data: {json.dumps({'type': 'done', 'total_length': len(full_content)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

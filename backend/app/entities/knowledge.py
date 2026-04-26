@@ -23,5 +23,7 @@ class Knowledge(Base):
     chunk_count = Column(Integer, default=0)
     status = Column(String(20), default="active")
     indexed = Column(Boolean, default=False)
+    parse_method = Column(String(20), default="")
+    mineru_output_dir = Column(String(500), default="")
     created_at = Column(DateTime, default=_now, server_default=sa_text("CURRENT_TIMESTAMP"))
     updated_at = Column(DateTime, default=_now, onupdate=_now, server_default=sa_text("CURRENT_TIMESTAMP"))

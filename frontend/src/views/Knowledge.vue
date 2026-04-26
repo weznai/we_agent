@@ -9,15 +9,6 @@
       </div>
       <div class="sidebar-list">
         <div
-          class="sidebar-item"
-          :class="{ active: activeGroupId === null }"
-          @click="selectGroup(null)"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          <span class="sidebar-item-name">全部知识库</span>
-          <span class="sidebar-item-count">{{ totalFileCount }}</span>
-        </div>
-        <div
           v-for="g in groups"
           :key="g.id"
           class="sidebar-item"
@@ -57,6 +48,7 @@
             @clear="searchResults = []"
           />
           <el-upload
+            v-if="activeGroupId"
             :show-file-list="false"
             :http-request="handleUpload"
             accept=".txt,.md,.csv,.json,.py,.js,.html,.css,.pdf,.doc,.docx,.xls,.xlsx"
@@ -136,7 +128,7 @@
           </el-table>
         </div>
 
-        <div v-else class="empty-files drop-zone" @click="triggerUpload">
+        <div v-else class="empty-files drop-zone" @click="!uploading && triggerUpload()">
           <input
             type="file"
             ref="fileInputRef"
@@ -145,7 +137,11 @@
             style="display: none"
             @change="onFileInputChange"
           />
-          <div class="drop-zone-content">
+          <div v-if="uploading" class="drop-zone-loading">
+            <el-icon :size="48" class="is-loading"><Loading /></el-icon>
+            <h3>正在上传中，请稍候...</h3>
+          </div>
+          <div v-else class="drop-zone-content">
             <el-icon :size="56" class="drop-icon"><UploadFilled /></el-icon>
             <h3>拖拽文件到此处上传</h3>
             <p>或点击选择文件</p>
@@ -319,6 +315,65 @@
         </div>
       </div>
 
+      <div class="tab-content rag-content" v-show="activeTab === 'rag'">
+        <div class="rag-input-area">
+          <div class="recall-scope" v-if="activeGroupId">
+            <el-tag type="primary" size="small">限定知识库：{{ currentGroupName }}</el-tag>
+          </div>
+          <div class="recall-input-wrapper">
+            <el-input
+              v-model="ragQuery"
+              placeholder="输入问题，系统将从知识库检索相关内容后由AI分析回答..."
+              @keydown.enter.prevent="runRAGQuery"
+              clearable
+            />
+            <el-button type="primary" @click="runRAGQuery" :loading="ragLoading" :disabled="!ragQuery.trim()">
+              <el-icon><Promotion /></el-icon> 问答
+            </el-button>
+          </div>
+        </div>
+
+        <div class="rag-body" v-if="ragResults.length > 0 || ragAnswer">
+          <div class="rag-chunks-panel" v-if="ragResults.length > 0">
+            <div class="rag-panel-header">
+              <h4>检索到的参考资料 ({{ ragResults.length }})</h4>
+            </div>
+            <div class="rag-chunks-list">
+              <div v-for="(r, i) in ragResults" :key="i" class="rag-chunk-card glass-card">
+                <div class="rag-chunk-header">
+                  <span class="rag-rank">#{{ i + 1 }}</span>
+                  <span class="rag-source">{{ r.knowledge_name }}</span>
+                  <el-tag size="small" :type="r.score >= 0.8 ? 'success' : r.score >= 0.5 ? 'warning' : 'danger'">
+                    {{ (r.score * 100).toFixed(1) }}%
+                  </el-tag>
+                  <el-tag v-if="r.chunk_type && r.chunk_type !== 'text'" size="small" type="info">{{ r.chunk_type }}</el-tag>
+                  <el-tag v-if="r.page_idx != null" size="small" type="info">P{{ r.page_idx + 1 }}</el-tag>
+                </div>
+                <p class="rag-chunk-text">{{ r.content }}</p>
+                <div v-if="r.content_path" class="rag-chunk-image">
+                  <el-image :src="'/mineru-output/' + r.content_path.split('mineru_output/').pop()" fit="contain" style="max-height: 200px" :preview-src-list="['/mineru-output/' + r.content_path.split('mineru_output/').pop()]" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rag-answer-panel" v-if="ragAnswer || ragStreaming">
+            <div class="rag-panel-header">
+              <h4>AI 分析结果</h4>
+              <el-tag v-if="ragStreaming" type="warning" size="small">
+                <el-icon class="is-loading"><Loading /></el-icon> 生成中...
+              </el-tag>
+            </div>
+            <div class="rag-answer-body" v-html="renderMarkdown(ragAnswer)"></div>
+          </div>
+        </div>
+
+        <div class="recall-empty" v-else>
+          <el-icon :size="40"><ChatDotRound /></el-icon>
+          <p>输入问题进行知识库问答，检索到的参考片段将先展示，再由AI分析输出最终结果</p>
+        </div>
+      </div>
+
       <el-dialog v-model="showFileEditDialog" title="编辑文件" width="450">
         <el-form :model="fileForm" label-position="top">
           <el-form-item label="文件名">
@@ -391,13 +446,15 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, Loading } from '@element-plus/icons-vue'
+import { marked } from 'marked'
 import api from '../api'
 
 const tabs = [
   { key: 'files', label: '文件列表', icon: 'FolderOpened' },
   { key: 'settings', label: '设置', icon: 'Setting' },
   { key: 'recall', label: '召回测试', icon: 'DataAnalysis' },
+  { key: 'rag', label: '知识问答', icon: 'ChatDotRound' },
 ]
 
 const activeTab = ref('files')
@@ -458,6 +515,12 @@ const currentChunkFile = ref(null)
 const currentChunks = ref([])
 const chunkLoading = ref(false)
 const expandedChunks = ref(new Set())
+
+const ragQuery = ref('')
+const ragLoading = ref(false)
+const ragResults = ref([])
+const ragAnswer = ref('')
+const ragStreaming = ref(false)
 
 function selectGroup(groupId) {
   activeGroupId.value = groupId
@@ -665,6 +728,7 @@ function onDragLeave() {
 
 function onDrop(e) {
   isDragging.value = false
+  if (uploading.value) return
   const droppedFiles = e.dataTransfer?.files
   if (droppedFiles && droppedFiles.length > 0) {
     handleBatchUpload(Array.from(droppedFiles))
@@ -776,6 +840,80 @@ async function runRecallTest() {
     ElMessage.error('召回测试失败：' + (e.response?.data?.detail || e.message || '未知错误'))
   }
   finally { recallLoading.value = false }
+}
+
+async function runRAGQuery() {
+  if (!ragQuery.value.trim()) return
+  ragLoading.value = true
+  ragResults.value = []
+  ragAnswer.value = ''
+  ragStreaming.value = false
+
+  const token = localStorage.getItem('token')
+  const params = new URLSearchParams()
+  if (activeGroupId.value) params.set('group_id', activeGroupId.value)
+
+  try {
+    const response = await fetch(`/api/knowledge/rag/answer-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: ragQuery.value,
+        group_id: activeGroupId.value,
+        top_k: 5,
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.detail || '请求失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'search_results') {
+            ragResults.value = data.results || []
+          } else if (data.type === 'chunk') {
+            ragStreaming.value = true
+            ragAnswer.value += data.content
+          } else if (data.type === 'done') {
+            ragStreaming.value = false
+          } else if (data.type === 'error') {
+            ElMessage.error(data.message || 'AI生成失败')
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+    }
+  } catch (e) {
+    ElMessage.error('知识问答失败：' + (e.message || '未知错误'))
+  } finally {
+    ragLoading.value = false
+    ragStreaming.value = false
+  }
+}
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  return marked.parse(text, { breaks: true })
 }
 
 function formatSize(bytes) {
@@ -1096,6 +1234,17 @@ watch(activeTab, (tab) => {
   }
 }
 
+.drop-zone-loading {
+  text-align: center;
+  color: var(--primary);
+
+  h3 {
+    font-size: 16px;
+    margin-top: 16px;
+    color: var(--text-secondary);
+  }
+}
+
 .drop-zone-content {
   text-align: center;
   color: var(--text-muted);
@@ -1365,6 +1514,167 @@ watch(activeTab, (tab) => {
       height: 40px;
       background: linear-gradient(transparent, rgba(255,255,255,0.9));
     }
+  }
+}
+
+.rag-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rag-input-area {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+}
+
+.rag-body {
+  display: flex;
+  gap: 20px;
+  min-height: 0;
+  flex: 1;
+}
+
+.rag-chunks-panel {
+  width: 45%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rag-answer-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rag-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  h4 { color: var(--primary); font-size: 15px; }
+}
+
+.rag-chunks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+.rag-chunk-card {
+  padding: 14px;
+  transition: var(--transition);
+  &:hover { border-color: var(--primary); }
+}
+
+.rag-chunk-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .rag-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--primary);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .rag-source {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.rag-chunk-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  background: rgba(37, 99, 235, 0.03);
+  border-radius: 8px;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+.rag-chunk-image {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.rag-answer-body {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  overflow-y: auto;
+  max-height: 600px;
+
+  :deep(h1), :deep(h2), :deep(h3), :deep(h4) {
+    color: var(--text-primary);
+    margin: 16px 0 8px;
+  }
+
+  :deep(p) {
+    margin: 8px 0;
+  }
+
+  :deep(code) {
+    background: rgba(37, 99, 235, 0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  :deep(pre) {
+    background: rgba(0, 0, 0, 0.04);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+
+  :deep(pre code) {
+    background: none;
+    padding: 0;
+  }
+
+  :deep(ol), :deep(ul) {
+    padding-left: 20px;
+  }
+
+  :deep(blockquote) {
+    border-left: 3px solid var(--primary);
+    padding-left: 12px;
+    color: var(--text-secondary);
+    margin: 8px 0;
   }
 }
 </style>

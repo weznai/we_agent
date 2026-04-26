@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     UPLOAD_DIR: str = "./data/uploads"
     EMBEDDING_MODEL: str = "local"
-    EMBEDDING_DIMENSION: int = 128
+    EMBEDDING_DIMENSION: int = 1024
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
     ORDER_API_BASE_URL: str = "http://121.43.198.13:8080"

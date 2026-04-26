@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import { useUserStore } from '../store/user'
 import { ElMessage } from 'element-plus'
 import api from '../api'
@@ -190,9 +190,17 @@ const sessions = ref([])
 const currentSession = ref('')
 const isLoading = ref(false)
 const sidebarCollapsed = ref(false)
-const selectedModelId = ref(null)
+const selectedModelId = ref(localStorage.getItem('chat_selected_model_chat') ? Number(localStorage.getItem('chat_selected_model_chat')) : null)
 const availableModels = ref([])
 const providers = ref([])
+
+watch(selectedModelId, (val) => {
+  if (val) {
+    localStorage.setItem('chat_selected_model_chat', val)
+  } else {
+    localStorage.removeItem('chat_selected_model_chat')
+  }
+})
 
 function renderMarkdown(text) {
   return marked(text || '')

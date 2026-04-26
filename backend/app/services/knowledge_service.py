@@ -1,7 +1,8 @@
 import os
+import json
 import time
 import uuid
-from typing import List, Optional
+from typing import List, Optional, AsyncGenerator
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
@@ -29,7 +30,7 @@ from ..schemas.knowledge import (
     ChunkInfo,
 )
 from .embedding_service import EmbeddingService, RerankService
-from .chunking_service import split_text_to_chunks
+from .chunking_service import split_text_to_chunks, split_mineru_content_list
 from .vector_store_service import VectorStoreService
 from ..config import get_settings
 from ..utils.logger import get_logger
@@ -186,6 +187,45 @@ def _extract_xlsx(content_bytes: bytes) -> str:
         raise RuntimeError(f"XLSX 文本提取失败: {e}") from e
 
 
+def _parse_with_mineru(file_path: str, filename: str, ext: str):
+    from ..utils.mineru_parser import MineruParser
+
+    output_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output", uuid.uuid4().hex[:8])
+    os.makedirs(output_dir, exist_ok=True)
+    logger.info(f"[Knowledge] >>> MineRU parse start: file={filename}, ext={ext}, output_dir={output_dir}")
+
+    ext_lower = ext.lower()
+    if ext_lower == "pdf":
+        content_list, md_content = MineruParser.parse_pdf(
+            pdf_path=file_path,
+            output_dir=output_dir,
+            method="auto",
+            lang="ch",
+        )
+    elif ext_lower in ("doc", "docx", "ppt", "pptx", "xls", "xlsx"):
+        try:
+            content_list, md_content = MineruParser.parse_office_doc(
+                doc_path=file_path,
+                output_dir=output_dir,
+                lang="ch",
+            )
+        except Exception:
+            content_list, md_content = MineruParser.parse_office_doc_python(
+                doc_path=file_path,
+                output_dir=output_dir,
+            )
+    else:
+        logger.warning(f"[Knowledge] MineRU skipped: unsupported ext={ext}")
+        return "", None, ""
+
+    text = md_content or ""
+    logger.info(
+        f"[Knowledge] <<< MineRU parse done: file={filename}, "
+        f"text_len={len(text)}, content_list_items={len(content_list) if content_list else 0}"
+    )
+    return text, content_list, output_dir
+
+
 # ── Groups ──────────────────────────────────────────────
 
 
@@ -323,7 +363,7 @@ def upload_file(
     file_size = len(content_bytes)
     if file_size > MAX_FILE_SIZE:
         logger.warning(
-            f"[Knowledge] File too large: filename={file.filename}, size={file_size}"
+            f"[Knowledge] File too large: filename={filename}, size={file_size}"
         )
         raise HTTPException(status_code=400, detail="File size exceeds 20MB limit")
 
@@ -337,17 +377,61 @@ def upload_file(
         f.write(content_bytes)
     logger.info(f"[Knowledge] File saved: path={file_path}, size={file_size}")
 
+    _t0 = time.time()
     extract_error = None
     content_text = ""
-    try:
-        content_text = _extract_text(content_bytes, ext)
-        if content_text:
-            logger.info(
-                f"[Knowledge] Text content extracted: length={len(content_text)}"
+    parse_method = ""
+    mineru_output_dir = ""
+    mineru_content_list = None
+
+    if ext.lower() == "pdf":
+        logger.info(f"[Knowledge] >>> Phase 1: PDF parsing (MineRU -> PyPDF2 fallback)")
+        try:
+            content_text, mineru_content_list, mineru_output_dir = _parse_with_mineru(
+                file_path, filename, ext
             )
-    except Exception as e:
-        extract_error = str(e)
-        logger.error(f"[Knowledge] Text extraction failed: file={filename}, error={e}", exc_info=True)
+            parse_method = "mineru"
+            logger.info(
+                f"[Knowledge] <<< Phase 1 DONE (MineRU): content_length={len(content_text)}, "
+                f"content_list_items={len(mineru_content_list) if mineru_content_list else 0}, "
+                f"elapsed={time.time() - _t0:.2f}s"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[Knowledge] !!! Phase 1 MineRU FAILED ({time.time() - _t0:.2f}s): {e}"
+            )
+            logger.warning(f"[Knowledge] >>> Phase 1 fallback: trying PyPDF2...")
+            _t1 = time.time()
+            try:
+                content_text = _extract_pdf(content_bytes)
+                logger.info(f"[Knowledge] <<< Phase 1 DONE (PyPDF2): content_length={len(content_text)}, elapsed={time.time() - _t1:.2f}s")
+            except Exception as e2:
+                extract_error = str(e2)
+                logger.error(f"[Knowledge] !!! Phase 1 FAILED completely (both MineRU and PyPDF2): {e2}", exc_info=True)
+
+    elif ext.lower() in ("doc", "docx", "ppt", "pptx", "xls", "xlsx"):
+        logger.info(f"[Knowledge] >>> Phase 1: Office doc parsing (MineRU)")
+        try:
+            content_text, mineru_content_list, mineru_output_dir = _parse_with_mineru(
+                file_path, filename, ext
+            )
+            parse_method = "mineru"
+            logger.info(f"[Knowledge] <<< Phase 1 DONE (MineRU office): content_length={len(content_text)}, elapsed={time.time() - _t0:.2f}s")
+        except Exception as e:
+            logger.warning(f"[Knowledge] !!! Phase 1 MineRU office FAILED ({time.time() - _t0:.2f}s): {e}")
+            try:
+                content_text = _extract_text(content_bytes, ext)
+                logger.info(f"[Knowledge] <<< Phase 1 DONE (fallback): content_length={len(content_text)}")
+            except Exception as e2:
+                extract_error = str(e2)
+                logger.error(f"[Knowledge] Office extraction failed: {e2}", exc_info=True)
+    else:
+        try:
+            content_text = _extract_text(content_bytes, ext)
+            logger.info(f"[Knowledge] Text extract done: content_length={len(content_text)}, elapsed={time.time() - _t0:.2f}s")
+        except Exception as e:
+            extract_error = str(e)
+            logger.error(f"[Knowledge] Text extraction failed: file={filename}, error={e}", exc_info=True)
 
     item = KnowledgeFactory.create(
         user_id,
@@ -358,17 +442,26 @@ def upload_file(
         file_size=file_size,
         content=content_text,
     )
+    if parse_method:
+        item.parse_method = parse_method
+    if mineru_output_dir:
+        item.mineru_output_dir = mineru_output_dir
     db.add(item)
     db.commit()
     db.refresh(item)
 
     indexing_error = None
-    if content_text:
+    if content_text or mineru_content_list:
         logger.info(
-            f"[Knowledge] Starting indexing: file_id={item.id}, content_length={len(content_text)}"
+            f"[Knowledge] Starting indexing: file_id={item.id}, "
+            f"content_length={len(content_text)}, has_mineru={mineru_content_list is not None}"
         )
         try:
-            index_knowledge(item, db)
+            index_knowledge(
+                item, db,
+                mineru_content_list=mineru_content_list,
+                mineru_output_dir=mineru_output_dir,
+            )
             db.refresh(item)
         except Exception as e:
             logger.error(f"[Knowledge] Indexing failed: file_id={item.id}, error={e}", exc_info=True)
@@ -381,7 +474,7 @@ def upload_file(
     elapsed = time.time() - start_time
     logger.info(
         f"[Knowledge] File upload complete: id={item.id}, name={filename}, "
-        f"indexed={item.indexed}, chunks={item.chunk_count}, elapsed={elapsed:.2f}s"
+        f"indexed={item.indexed}, chunks={item.chunk_count}, parse_method={parse_method}, elapsed={elapsed:.2f}s"
     )
     resp = KnowledgeResponse.model_validate(item)
     resp_dict = resp.model_dump()
@@ -461,6 +554,23 @@ def reindex_file(user_id: int, file_id: int, db: Session):
     except Exception as e:
         logger.warning(f"[Knowledge] VectorStore delete failed: {e}")
 
+    mineru_content_list = None
+    mineru_output_dir = item.mineru_output_dir
+
+    ext_lower = (item.file_type or "").lower()
+    if ext_lower == "pdf" and item.file_path and os.path.exists(item.file_path):
+        try:
+            content_text, mineru_content_list, mineru_output_dir = _parse_with_mineru(
+                item.file_path, item.name, item.file_type
+            )
+            item.content = content_text
+            item.parse_method = "mineru"
+            item.mineru_output_dir = mineru_output_dir
+            db.commit()
+            logger.info(f"[Knowledge] Re-parsed with MineRU: content_length={len(content_text)}")
+        except Exception as e:
+            logger.warning(f"[Knowledge] MineRU re-parse failed: {e}, using existing content")
+
     if not item.content and item.file_path and os.path.exists(item.file_path):
         logger.info(f"[Knowledge] Content empty, re-extracting from file: {item.file_path}")
         try:
@@ -476,9 +586,13 @@ def reindex_file(user_id: int, file_id: int, db: Session):
             logger.error(f"[Knowledge] Re-extract failed: file_id={file_id}, error={e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"文本提取失败：{e}")
 
-    if item.content:
+    if item.content or mineru_content_list:
         try:
-            index_knowledge(item, db)
+            index_knowledge(
+                item, db,
+                mineru_content_list=mineru_content_list,
+                mineru_output_dir=mineru_output_dir,
+            )
             db.refresh(item)
         except Exception as e:
             logger.error(f"[Knowledge] Reindex failed: file_id={file_id}, error={e}", exc_info=True)
@@ -580,6 +694,10 @@ def search_knowledge(
                 content=r["content"],
                 score=r["score"],
                 chunk_index=r["metadata"].get("chunk_index", 0),
+                chunk_type=r["metadata"].get("chunk_type", "text"),
+                page_idx=r["metadata"].get("page_idx"),
+                content_path=r["metadata"].get("content_path"),
+                image_path=r["metadata"].get("image_path"),
             )
         )
 
@@ -778,15 +896,29 @@ def recall_test(
 # ── Indexing ────────────────────────────────────────────
 
 
-def index_knowledge(item: Knowledge, db: Session):
+def index_knowledge(
+    item: Knowledge,
+    db: Session,
+    mineru_content_list: Optional[List[dict]] = None,
+    mineru_output_dir: str = "",
+):
     start_time = time.time()
     logger.info(
-        f"[Knowledge] Indexing: file_id={item.id}, content_length={len(item.content)}"
+        f"[Knowledge] Indexing: file_id={item.id}, content_length={len(item.content)}, "
+        f"has_mineru={mineru_content_list is not None}"
     )
 
-    ks = db.query(KnowledgeSetting).filter(
-        KnowledgeSetting.user_id == item.user_id
-    ).first()
+    ks = None
+    if item.group_id:
+        ks = db.query(KnowledgeSetting).filter(
+            KnowledgeSetting.user_id == item.user_id,
+            KnowledgeSetting.group_id == item.group_id,
+        ).first()
+    if not ks:
+        ks = db.query(KnowledgeSetting).filter(
+            KnowledgeSetting.user_id == item.user_id,
+            KnowledgeSetting.group_id.is_(None),
+        ).first()
     if not ks:
         logger.warning(f"[Knowledge] No settings found for user_id={item.user_id}, using defaults")
     chunk_method = ks.chunk_method if ks else "auto"
@@ -794,22 +926,51 @@ def index_knowledge(item: Knowledge, db: Session):
     chunk_overlap = ks.chunk_overlap if ks else settings.CHUNK_OVERLAP
     embedding_model_id = ks.embedding_model_id if ks else None
 
-    chunks_info = split_text_to_chunks(
-        item.content,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        method=chunk_method,
-    )
+    chunks_info = []
+    logger.info(f"[Knowledge] >>> Phase 2: Chunking text (method={chunk_method}, size={chunk_size}, overlap={chunk_overlap})")
+
+    if mineru_content_list:
+        chunks_info = split_mineru_content_list(
+            content_list=mineru_content_list,
+            output_dir=mineru_output_dir or item.mineru_output_dir or "",
+            document_name=item.name,
+            max_chunk_size=chunk_size,
+            min_chunk_size=max(chunk_size // 10, 50),
+            overlap_size=chunk_overlap,
+        )
+        logger.info(f"[Knowledge] MineRU chunks: file_id={item.id}, count={len(chunks_info)}")
+
+    if not chunks_info:
+        chunks_info = split_text_to_chunks(
+            item.content,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            method=chunk_method,
+        )
+
     if not chunks_info:
         logger.warning(f"[Knowledge] No chunks generated: file_id={item.id}, content_length={len(item.content)}, method={chunk_method}, chunk_size={chunk_size}")
         return
 
-    logger.info(f"[Knowledge] Chunks generated: file_id={item.id}, count={len(chunks_info)}")
+    logger.info(f"[Knowledge] <<< Phase 2 DONE: Chunks generated: file_id={item.id}, count={len(chunks_info)}, elapsed={time.time() - start_time:.2f}s")
+    _t_embed = time.time()
     emb_svc = get_embedding_service(db=db, model_id=embedding_model_id)
-    logger.info(f"[Knowledge] Generating embeddings: chunks={len(chunks_info)}, model_id={embedding_model_id}, emb_svc_type={type(emb_svc).__name__}, is_loaded={emb_svc.is_loaded}")
-    texts = [c["content"] for c in chunks_info]
-    embeddings = emb_svc.embed_texts(texts)
+    logger.info(f"[Knowledge] >>> Phase 3: Generating embeddings: chunks={len(chunks_info)}, model_id={embedding_model_id}, emb_svc_type={type(emb_svc).__name__}, is_loaded={emb_svc.is_loaded}")
 
+    texts_to_embed = []
+    for c in chunks_info:
+        meta = c.get("metadata", {})
+        emb_type = meta.get("embedding_type", "text")
+        if emb_type == "text" or not meta.get("content_path"):
+            texts_to_embed.append(c.get("content", ""))
+        else:
+            texts_to_embed.append(c.get("content", ""))
+
+    embeddings = emb_svc.embed_texts(texts_to_embed)
+    logger.info(f"[Knowledge] <<< Phase 3 DONE: embeddings count={len(embeddings)}, elapsed={time.time() - _t_embed:.2f}s")
+
+    _t_store = time.time()
+    logger.info(f"[Knowledge] >>> Phase 4: Saving chunks to VectorStore + DB")
     chunk_ids = []
     documents = []
     embedding_list = []
@@ -818,24 +979,39 @@ def index_knowledge(item: Knowledge, db: Session):
     for i, (info, vec) in enumerate(zip(chunks_info, embeddings)):
         chunk = KnowledgeFactory.create_chunk(
             knowledge_id=item.id,
-            chunk_index=info["chunk_index"],
-            content=info["content"],
+            chunk_index=info.get("chunk_index", i),
+            content=info.get("content", ""),
             embedding="",
             group_id=item.group_id,
         )
+        chunk.chunk_type = info.get("chunk_type", "text")
+        chunk.page_idx = info.get("page_idx")
+        chunk.content_path = info.get("content_path", "")
+        chunk.image_path = info.get("image_path", "")
+        chunk.metadata_json = json.dumps(info.get("metadata", {}), ensure_ascii=False)
         db.add(chunk)
 
-        chunk_id = f"{item.id}_{info['chunk_index']}"
+        chunk_id = f"{item.id}_{info.get('chunk_index', i)}"
         meta: dict = {
             "user_id": item.user_id,
             "knowledge_id": item.id,
-            "chunk_index": info["chunk_index"],
+            "chunk_index": info.get("chunk_index", i),
+            "chunk_type": info.get("chunk_type", "text"),
         }
         if item.group_id is not None:
             meta["group_id"] = item.group_id
+        if info.get("page_idx") is not None:
+            meta["page_idx"] = info["page_idx"]
+        if info.get("content_path"):
+            meta["content_path"] = info["content_path"]
+        if info.get("image_path"):
+            meta["image_path"] = info["image_path"]
+        extra_meta = info.get("metadata", {})
+        if extra_meta:
+            meta.update(extra_meta)
 
         chunk_ids.append(chunk_id)
-        documents.append(info["content"])
+        documents.append(info.get("content", ""))
         embedding_list.append(vec)
         metadatas.append(meta)
 
@@ -848,7 +1024,8 @@ def index_knowledge(item: Knowledge, db: Session):
             metadatas=metadatas,
         )
     except Exception as e:
-        logger.error(f"[Knowledge] VectorStore add failed: {e}")
+        logger.error(f"[Knowledge] !!! Phase 4 FAILED: VectorStore add failed: {e}")
+    logger.info(f"[Knowledge] <<< Phase 4 DONE: chunks={len(chunk_ids)}, elapsed={time.time() - _t_store:.2f}s")
 
     item.chunk_count = len(chunks_info)
     item.indexed = True
@@ -871,3 +1048,66 @@ def search_for_agent(user_id: int, query: str, group_id: Optional[int], top_k: i
         }
         for r in results
     ]
+
+
+def rag_search_with_chunks(
+    user_id: int, query: str, group_id: Optional[int], top_k: int, db: Session
+) -> List[KnowledgeSearchResult]:
+    return search_knowledge(user_id, query, group_id, top_k, db)
+
+
+async def rag_answer_stream(
+    user_id: int,
+    query: str,
+    search_results: List[KnowledgeSearchResult],
+    db: Session,
+    model_id: Optional[int] = None,
+) -> AsyncGenerator[str, None]:
+    from .model_service import resolve_model
+    from openai import AsyncOpenAI
+
+    model, provider = resolve_model(db, "chat", model_id)
+
+    ref_parts = []
+    for i, r in enumerate(search_results):
+        ref_item = f"[参考资料{i+1}] 来源: {r.knowledge_name}"
+        if r.page_idx is not None:
+            ref_item += f", 第{r.page_idx + 1}页"
+        ref_item += f"\n{r.content}"
+        ref_parts.append(ref_item)
+
+    references = "\n\n".join(ref_parts)
+
+    system_prompt = (
+        "你是一个专业的知识库问答助手。请根据提供的参考资料回答用户的问题。\n"
+        "回答要求：\n"
+        "1. 基于参考资料内容回答，如果参考资料不足以回答，请明确说明\n"
+        "2. 引用资料时使用 [参考资料X] 格式标注来源\n"
+        "3. 回答要准确、完整、有条理\n"
+        "4. 使用中文回答"
+    )
+
+    user_msg = f"用户问题：{query}\n\n参考资料：\n{references}"
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_msg},
+    ]
+
+    client = AsyncOpenAI(base_url=provider.api_base, api_key=provider.api_key)
+
+    try:
+        stream = await client.chat.completions.create(
+            model=model.name,
+            messages=messages,
+            max_tokens=model.max_tokens or 4096,
+            temperature=float(model.temperature) if model.temperature else 0.7,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+    except Exception as e:
+        logger.error(f"[Knowledge RAG] LLM stream failed: {e}")
+        yield f"\n\n[错误] AI 服务调用失败: {str(e)}"
