@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+
 from ..database import get_db
-from ..models.model import Model
-from ..models.provider import Provider
+from ..entities import Model, Provider, User
+from ..entities.factory import ModelFactory
 from ..schemas.model import ModelCreate, ModelUpdate, ModelResponse
-from ..utils.auth import get_current_user, get_current_admin
-from ..models.user import User
+from ..dependencies import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -30,7 +30,17 @@ async def create_model(
         provider = db.query(Provider).filter(Provider.id == data.provider_id).first()
         if not provider:
             raise HTTPException(status_code=404, detail="Provider not found")
-    model = Model(**data.model_dump())
+    model = ModelFactory.create(
+        name=data.name,
+        provider_id=data.provider_id,
+        display_name=data.display_name,
+        model_type=data.model_type,
+        description=data.description,
+        max_tokens=data.max_tokens,
+        temperature=data.temperature,
+        embedding_dimension=data.embedding_dimension,
+        model_path=data.model_path,
+    )
     db.add(model)
     db.commit()
     db.refresh(model)

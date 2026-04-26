@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+
 from ..database import get_db
-from ..models.model_mapping import ModelMapping
-from ..models.model import Model
-from ..models.provider import Provider
+from ..entities import ModelMapping, Model, Provider, User
+from ..entities.factory import ModelMappingFactory
 from ..schemas.model_mapping import ModelMappingCreate, ModelMappingUpdate, ModelMappingResponse
-from ..utils.auth import get_current_user, get_current_admin
-from ..models.user import User
+from ..dependencies import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/api/model-mappings", tags=["model-mappings"])
 
@@ -44,7 +43,11 @@ async def create_mapping(
     model = db.query(Model).filter(Model.id == data.model_id).first()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    mapping = ModelMapping(**data.model_dump())
+    mapping = ModelMappingFactory.create(
+        agent_type=data.agent_type,
+        model_id=data.model_id,
+        priority=data.priority,
+    )
     db.add(mapping)
     db.commit()
     db.refresh(mapping)
@@ -97,4 +100,3 @@ async def delete_mapping(
     db.delete(mapping)
     db.commit()
     return {"message": "Mapping deleted"}
-

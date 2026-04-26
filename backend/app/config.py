@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 128
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
+    ORDER_API_BASE_URL: str = "http://121.43.198.13:8080"
+    ORDER_API_KEY: str = ""
 
 
 @lru_cache()

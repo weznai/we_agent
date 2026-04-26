@@ -9,7 +9,7 @@ class ModelCreate(BaseModel):
     display_name: Optional[str] = ""
     model_type: Optional[str] = "chat"
     description: Optional[str] = ""
-    max_tokens: Optional[int] = 4096
+    max_tokens: Optional[int] = 1048576
     temperature: Optional[str] = "0.7"
     embedding_dimension: Optional[int] = 0
     model_path: Optional[str] = ""

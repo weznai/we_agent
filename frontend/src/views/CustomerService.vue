@@ -37,14 +37,12 @@
         <div class="toolbar-left">
           <div class="toolbar-logo">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="18" height="18" rx="5" fill="url(#tlg)"/>
-              <circle cx="9" cy="10" r="1.5" fill="white"/>
-              <circle cx="15" cy="10" r="1.5" fill="white"/>
-              <path d="M9 15h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-              <defs><linearGradient id="tlg" x1="3" y1="3" x2="24" y2="24"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+              <rect x="3" y="3" width="18" height="18" rx="5" fill="url(#cslg)"/>
+              <path d="M8 12h8M12 8v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <defs><linearGradient id="cslg" x1="3" y1="3" x2="24" y2="24"><stop stop-color="#10b981"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs>
             </svg>
           </div>
-          <span class="toolbar-title">智能聊天</span>
+          <span class="toolbar-title">智能客服</span>
         </div>
         <div class="toolbar-right">
           <el-select
@@ -76,23 +74,22 @@
         <div v-if="messages.length === 0" class="empty-chat">
           <div class="empty-illustration">
             <svg viewBox="0 0 160 160" fill="none" width="140" height="140">
-              <circle cx="80" cy="80" r="70" fill="url(#eg1)" opacity="0.12"/>
-              <circle cx="80" cy="80" r="50" fill="url(#eg1)" opacity="0.08"/>
-              <rect x="48" y="45" width="64" height="52" rx="12" fill="url(#eg1)" opacity="0.15"/>
-              <circle cx="66" cy="68" r="4" fill="#2563eb" opacity="0.7"/>
-              <circle cx="80" cy="68" r="4" fill="#0ea5e9" opacity="0.7"/>
-              <circle cx="94" cy="68" r="4" fill="#06b6d4" opacity="0.7"/>
-              <path d="M62 84h36" stroke="url(#eg1)" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-              <path d="M70 92h20" stroke="url(#eg1)" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
-              <circle cx="35" cy="40" r="3" fill="#3b82f6" opacity="0.3"/>
-              <circle cx="130" cy="50" r="2.5" fill="#06b6d4" opacity="0.3"/>
-              <circle cx="25" cy="110" r="2" fill="#0ea5e9" opacity="0.3"/>
-              <circle cx="140" cy="120" r="3.5" fill="#2563eb" opacity="0.2"/>
-              <defs><linearGradient id="eg1" x1="0" y1="0" x2="160" y2="160"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+              <circle cx="80" cy="80" r="70" fill="url(#cseg)" opacity="0.12"/>
+              <circle cx="80" cy="80" r="50" fill="url(#cseg)" opacity="0.08"/>
+              <rect x="40" y="50" width="80" height="50" rx="12" fill="url(#cseg)" opacity="0.15"/>
+              <circle cx="62" cy="72" r="4" fill="#10b981" opacity="0.7"/>
+              <circle cx="80" cy="72" r="4" fill="#06b6d4" opacity="0.7"/>
+              <circle cx="98" cy="72" r="4" fill="#0ea5e9" opacity="0.7"/>
+              <path d="M56 88h48" stroke="url(#cseg)" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+              <circle cx="30" cy="45" r="3" fill="#10b981" opacity="0.3"/>
+              <circle cx="135" cy="55" r="2.5" fill="#06b6d4" opacity="0.3"/>
+              <circle cx="25" cy="115" r="2" fill="#0ea5e9" opacity="0.3"/>
+              <circle cx="140" cy="125" r="3.5" fill="#10b981" opacity="0.2"/>
+              <defs><linearGradient id="cseg" x1="0" y1="0" x2="160" y2="160"><stop stop-color="#10b981"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs>
             </svg>
           </div>
-          <h3>开始新的对话</h3>
-          <p>向 AI 助手提问任何问题</p>
+          <h3>智能客服</h3>
+          <p>有任何问题，请随时向我咨询</p>
         </div>
 
         <div v-for="(msg, i) in messages" :key="i" :class="['message', msg.role]">
@@ -106,9 +103,7 @@
             <div v-else class="avatar-circle ai-avatar">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
-                <circle cx="9" cy="10" r="1.5" fill="white"/>
-                <circle cx="15" cy="10" r="1.5" fill="white"/>
-                <path d="M9 15h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M8 12h8M12 8v8" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
           </div>
@@ -127,9 +122,7 @@
             <div class="avatar-circle ai-avatar">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
-                <circle cx="9" cy="10" r="1.5" fill="white"/>
-                <circle cx="15" cy="10" r="1.5" fill="white"/>
-                <path d="M9 15h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M8 12h8M12 8v8" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
           </div>
@@ -150,7 +143,7 @@
               v-model="inputText"
               type="textarea"
               :rows="2"
-              placeholder="输入消息，按 Enter 发送..."
+              placeholder="描述您的问题，按 Enter 发送..."
               resize="none"
               @keydown.enter.exact.prevent="sendMessage"
             />
@@ -216,7 +209,7 @@ async function loadModels() {
 async function loadSessions() {
   try {
     const all = await api.get('/chat/sessions')
-    sessions.value = all.filter(s => s.agent_type === 'chat')
+    sessions.value = all.filter(s => s.agent_type === 'customer_service')
   } catch {}
 }
 
@@ -250,22 +243,19 @@ async function sendMessage() {
 
   try {
     const token = localStorage.getItem('token')
-    const body = {
+    const params = new URLSearchParams({
       session_id: currentSession.value,
       content: text,
-      agent_type: 'chat',
-    }
+    })
     if (selectedModelId.value) {
-      body.model_id = selectedModelId.value
+      params.append('model_id', selectedModelId.value)
     }
 
-    const response = await fetch('/api/chat/message/stream', {
+    const response = await fetch(`/api/order-agent/chat/stream?${params.toString()}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify(body),
     })
 
     if (!response.ok) {
@@ -384,18 +374,16 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: white;
-  background: var(--gradient-primary);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
   transition: var(--transition);
 
   &:hover {
-    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
     transform: translateY(-1px);
   }
 
-  &:active {
-    transform: translateY(0);
-  }
+  &:active { transform: translateY(0); }
 }
 
 .icon-action {
@@ -411,15 +399,15 @@ onMounted(() => {
   transition: var(--transition);
 
   &:hover {
-    color: var(--primary);
-    background: rgba(37, 99, 235, 0.06);
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.06);
   }
 }
 
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 10px;
+  padding: 10px;
 }
 
 .session-item {
@@ -431,7 +419,6 @@ onMounted(() => {
   cursor: pointer;
   transition: var(--transition);
   margin-bottom: 2px;
-  position: relative;
 
   &:hover {
     background: var(--bg-card-hover);
@@ -439,9 +426,9 @@ onMounted(() => {
   }
 
   &.active {
-    background: rgba(37, 99, 235, 0.07);
-    .session-text { color: var(--primary); font-weight: 600; }
-    .session-dot { background: var(--primary); }
+    background: rgba(16, 185, 129, 0.07);
+    .session-text { color: #10b981; font-weight: 600; }
+    .session-dot { background: #10b981; }
     .delete-icon { color: var(--text-muted); &:hover { color: var(--danger); } }
   }
 
@@ -569,21 +556,10 @@ onMounted(() => {
   height: 100%;
   gap: 16px;
 
-  .empty-illustration {
-    opacity: 0.85;
-    margin-bottom: 4px;
-  }
+  .empty-illustration { opacity: 0.85; margin-bottom: 4px; }
 
-  h3 {
-    font-size: 22px;
-    color: var(--text-primary);
-    font-weight: 700;
-  }
-  p {
-    color: var(--text-secondary);
-    font-size: 15px;
-    margin-top: -4px;
-  }
+  h3 { font-size: 22px; color: var(--text-primary); font-weight: 700; }
+  p { color: var(--text-secondary); font-size: 15px; margin-top: -4px; }
 }
 
 .message {
@@ -596,9 +572,9 @@ onMounted(() => {
   &.user {
     flex-direction: row-reverse;
     .message-bubble {
-      background: #eef3fd;
+      background: #eef8f4;
       color: var(--text-primary);
-      border: 1px solid #d4dff2;
+      border: 1px solid #d0e8df;
       border-radius: 20px 20px 4px 20px;
     }
   }
@@ -608,7 +584,7 @@ onMounted(() => {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 20px 20px 20px 4px;
-      box-shadow: 0 1px 4px rgba(37, 99, 235, 0.05);
+      box-shadow: 0 1px 4px rgba(16, 185, 129, 0.05);
     }
   }
 }
@@ -630,13 +606,13 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 }
 
 .ai-avatar {
-  background: linear-gradient(135deg, #0ea5e9, #06b6d4);
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+  background: linear-gradient(135deg, #06b6d4, #0ea5e9);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
 }
 
 .message-content { max-width: 68%; }
@@ -662,9 +638,9 @@ onMounted(() => {
     transition: var(--transition);
 
     &:hover {
-      color: var(--primary);
-      border-color: var(--primary);
-      background: rgba(37, 99, 235, 0.04);
+      color: #10b981;
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.04);
     }
 
     .el-icon { font-size: 14px; }
@@ -682,11 +658,11 @@ onMounted(() => {
   :deep(ul), :deep(ol) { padding-left: 20px; margin: 4px 0; }
   :deep(li) { margin-bottom: 2px; }
   :deep(code) {
-    background: rgba(37, 99, 235, 0.08);
+    background: rgba(16, 185, 129, 0.08);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 13px;
-    color: var(--primary-dark);
+    color: #059669;
   }
   :deep(pre) {
     background: #1e293b;
@@ -704,7 +680,7 @@ onMounted(() => {
     }
   }
   :deep(blockquote) {
-    border-left: 3px solid var(--primary-light);
+    border-left: 3px solid #10b981;
     padding-left: 12px;
     margin: 8px 0;
     color: var(--text-secondary);
@@ -720,13 +696,13 @@ onMounted(() => {
       text-align: left;
       font-size: 13px;
     }
-    th { background: rgba(37, 99, 235, 0.04); font-weight: 600; }
+    th { background: rgba(16, 185, 129, 0.04); font-weight: 600; }
   }
 }
 
 .message.user .message-bubble {
   :deep(pre) { background: #e4e9f0; }
-  :deep(code) { background: rgba(37, 99, 235, 0.08); color: var(--primary-dark); }
+  :deep(code) { background: rgba(16, 185, 129, 0.08); color: #059669; }
 }
 
 .message-bubble.typing {
@@ -738,7 +714,7 @@ onMounted(() => {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #2563eb, #0ea5e9);
+    background: linear-gradient(135deg, #10b981, #06b6d4);
     animation: typing 1.4s ease-in-out infinite;
 
     &:nth-child(2) { animation-delay: 0.2s; }
@@ -779,8 +755,8 @@ onMounted(() => {
     line-height: 1.5;
 
     &:focus {
-      border-color: var(--primary) !important;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+      border-color: #10b981 !important;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1) !important;
     }
   }
 }
@@ -791,19 +767,17 @@ onMounted(() => {
   border-radius: 14px;
   flex-shrink: 0;
   font-size: 18px;
-  background: var(--gradient-primary) !important;
+  background: linear-gradient(135deg, #10b981, #06b6d4) !important;
   border: none !important;
   transition: all 0.25s ease !important;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4) !important;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4) !important;
     transform: translateY(-1px);
   }
 
-  &:active {
-    transform: translateY(0);
-  }
+  &:active { transform: translateY(0); }
 
   &.is-disabled {
     opacity: 0.5;

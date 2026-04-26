@@ -1,55 +1,29 @@
 <template>
   <div class="knowledge-layout">
-    <div class="group-sidebar">
-      <div class="sidebar-top">
-        <h3>知识库分组</h3>
-        <el-button text size="small" @click="openGroupDialog()">
-          <el-icon><Plus /></el-icon>
-        </el-button>
-      </div>
-
-      <div
-        class="group-item"
-        :class="{ active: currentGroupId === null }"
-        @click="currentGroupId = null"
-      >
-        <el-icon><FolderOpened /></el-icon>
-        <span class="group-name">全部文件</span>
-        <span class="group-count">{{ totalCount }}</span>
-      </div>
-
-      <div
-        v-for="g in groups"
-        :key="g.id"
-        class="group-item"
-        :class="{ active: currentGroupId === g.id }"
-        @click="currentGroupId = g.id"
-      >
-        <el-icon><Folder /></el-icon>
-        <span class="group-name">{{ g.name }}</span>
-        <span class="group-count">{{ g.file_count }}</span>
-        <el-dropdown trigger="click" @command="(cmd) => handleGroupCmd(cmd, g)" @click.stop>
-          <el-icon class="group-more" @click.stop><MoreFilled /></el-icon>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="edit">编辑</el-dropdown-item>
-              <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-
-      <div class="sidebar-bottom">
-        <div class="search-box">
-          <el-input v-model="searchQuery" placeholder="搜索知识库..." :prefix-icon="Search" @keyup.enter="doSearch" />
+    <div class="knowledge-main">
+      <div class="knowledge-header">
+        <div class="header-tabs">
+          <div
+            v-for="tab in tabs"
+            :key="tab.key"
+            class="tab-item"
+            :class="{ active: activeTab === tab.key }"
+            @click="activeTab = tab.key"
+          >
+            <el-icon><component :is="tab.icon" /></el-icon>
+            <span>{{ tab.label }}</span>
+          </div>
         </div>
-      </div>
-    </div>
-
-    <div class="file-area">
-      <div class="file-header">
-        <h2>{{ currentGroupName }}</h2>
-        <div class="header-actions">
+        <div class="header-actions" v-if="activeTab === 'files'">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索知识库..."
+            :prefix-icon="Search"
+            class="search-input"
+            @keyup.enter="doSearch"
+            clearable
+            @clear="searchResults = []"
+          />
           <el-upload
             :show-file-list="false"
             :http-request="handleUpload"
@@ -62,85 +36,199 @@
         </div>
       </div>
 
-      <div class="search-results" v-if="searchResults.length > 0">
-        <div class="search-header">
-          <h4>搜索结果</h4>
-          <el-button text size="small" @click="searchResults = []">关闭</el-button>
-        </div>
-        <div v-for="r in searchResults" :key="r.chunk_id" class="search-result-card glass-card">
-          <div class="result-header">
-            <el-icon><Document /></el-icon>
-            <span class="result-name">{{ r.knowledge_name }}</span>
-            <el-tag size="small" type="success">{{ (r.score * 100).toFixed(1) }}%</el-tag>
+      <!-- 全部知识库 -->
+      <div class="tab-content" v-show="activeTab === 'files'">
+        <div class="search-results" v-if="searchResults.length > 0">
+          <div class="search-header">
+            <h4>搜索结果</h4>
+            <el-button text size="small" @click="searchResults = []">关闭</el-button>
           </div>
-          <p class="result-content">{{ r.content }}</p>
+          <div v-for="r in searchResults" :key="r.chunk_id" class="search-result-card glass-card">
+            <div class="result-header">
+              <el-icon><Document /></el-icon>
+              <span class="result-name">{{ r.knowledge_name }}</span>
+              <el-tag size="small" type="success">{{ (r.score * 100).toFixed(1) }}%</el-tag>
+            </div>
+            <p class="result-content">{{ r.content }}</p>
+          </div>
+        </div>
+
+        <div class="file-table" v-else>
+          <el-table :data="files" stripe>
+            <el-table-column label="文件" min-width="240">
+              <template #default="{ row }">
+                <div class="file-info">
+                  <div class="file-icon" :style="{ background: getFileIconBg(row.file_type) }">
+                    {{ row.file_type?.toUpperCase()?.slice(0, 2) || '?' }}
+                  </div>
+                  <div class="file-detail">
+                    <span class="file-name">{{ row.name }}</span>
+                    <span class="file-desc">{{ row.description || row.file_type }}</span>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="file_size" label="大小" width="100">
+              <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
+            </el-table-column>
+            <el-table-column prop="chunk_count" label="分块" width="80">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.chunk_count > 0 ? 'success' : 'info'">{{ row.chunk_count }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="indexed" label="索引" width="80">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.indexed ? 'success' : 'warning'">{{ row.indexed ? '已索引' : '待处理' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="上传时间" width="160">
+              <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" fixed="right">
+              <template #default="{ row }">
+                <el-button text size="small" @click="openFileEditDialog(row)"><el-icon><Edit /></el-icon></el-button>
+                <el-button text size="small" type="primary" @click="reindexFile(row.id)"><el-icon><Refresh /></el-icon></el-button>
+                <el-button text size="small" type="danger" @click="deleteFile(row.id)"><el-icon><Delete /></el-icon></el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-if="files.length === 0" class="empty-files">
+            <el-icon :size="48"><FolderOpened /></el-icon>
+            <p>暂无文件，点击上传按钮添加</p>
+          </div>
         </div>
       </div>
 
-      <div class="file-table" v-else>
-        <el-table :data="files" stripe>
-          <el-table-column label="文件" min-width="240">
-            <template #default="{ row }">
-              <div class="file-info">
-                <div class="file-icon" :style="{ background: getFileIconBg(row.file_type) }">
-                  {{ row.file_type?.toUpperCase()?.slice(0, 2) || '?' }}
-                </div>
-                <div class="file-detail">
-                  <span class="file-name">{{ row.name }}</span>
-                  <span class="file-desc">{{ row.description || row.file_type }}</span>
-                </div>
+      <!-- 设置 -->
+      <div class="tab-content settings-content" v-show="activeTab === 'settings'">
+        <div class="settings-section">
+          <div class="section-title">
+            <el-icon><Cpu /></el-icon>
+            <span>嵌入模型</span>
+          </div>
+          <div class="section-body">
+            <el-form label-position="top" class="settings-form">
+              <el-form-item label="嵌入模型">
+                <el-select v-model="settingsForm.embedding_model_id" placeholder="选择嵌入模型" clearable style="width: 100%">
+                  <el-option
+                    v-for="m in embeddingModels"
+                    :key="m.id"
+                    :label="m.display_name"
+                    :value="m.id"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">
+            <el-icon><Scissor /></el-icon>
+            <span>切割分段方式</span>
+          </div>
+          <div class="section-body">
+            <el-form label-position="top" class="settings-form">
+              <el-form-item label="分段方式">
+                <el-select v-model="settingsForm.chunk_method" style="width: 100%">
+                  <el-option label="自动分段" value="auto" />
+                  <el-option label="按段落分段" value="paragraph" />
+                  <el-option label="按句子分段" value="sentence" />
+                  <el-option label="固定长度分段" value="fixed" />
+                </el-select>
+              </el-form-item>
+              <div class="form-row">
+                <el-form-item label="分段最大长度">
+                  <el-input-number v-model="settingsForm.chunk_size" :min="100" :max="4000" :step="100" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="重叠长度">
+                  <el-input-number v-model="settingsForm.chunk_overlap" :min="0" :max="500" :step="10" style="width: 100%" />
+                </el-form-item>
               </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="file_size" label="大小" width="100">
-            <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
-          </el-table-column>
-          <el-table-column prop="chunk_count" label="分块" width="80">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.chunk_count > 0 ? 'success' : 'info'">{{ row.chunk_count }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="indexed" label="索引" width="80">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.indexed ? 'success' : 'warning'">{{ row.indexed ? '已索引' : '待处理' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="上传时间" width="160">
-            <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <el-button text size="small" @click="openFileEditDialog(row)"><el-icon><Edit /></el-icon></el-button>
-              <el-button text size="small" @click="moveFile(row)"><el-icon><Rank /></el-icon></el-button>
-              <el-button text size="small" type="primary" @click="reindexFile(row.id)"><el-icon><Refresh /></el-icon></el-button>
-              <el-button text size="small" type="danger" @click="deleteFile(row.id)"><el-icon><Delete /></el-icon></el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+            </el-form>
+          </div>
+        </div>
 
-        <div v-if="files.length === 0" class="empty-files">
-          <el-icon :size="48"><FolderOpened /></el-icon>
-          <p>暂无文件，点击上传按钮添加</p>
+        <div class="settings-section">
+          <div class="section-title">
+            <el-icon><Search /></el-icon>
+            <span>检索方式</span>
+          </div>
+          <div class="section-body">
+            <el-form label-position="top" class="settings-form">
+              <el-form-item label="检索模式">
+                <el-select v-model="settingsForm.retrieval_method" style="width: 100%">
+                  <el-option label="纯向量检索" value="pure" />
+                  <el-option label="混合检索（向量 + 关键词）" value="hybrid" />
+                </el-select>
+              </el-form-item>
+              <div class="form-row">
+                <el-form-item label="召回数量 (Top K)">
+                  <el-input-number v-model="settingsForm.retrieval_top_k" :min="1" :max="50" :step="1" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="相似度阈值">
+                  <el-input-number v-model="scoreThresholdNum" :min="0" :max="1" :step="0.05" :precision="2" style="width: 100%" />
+                </el-form-item>
+              </div>
+            </el-form>
+          </div>
+        </div>
+
+        <div class="settings-footer">
+          <el-button type="primary" @click="saveSettings" :loading="savingSettings">保存设置</el-button>
         </div>
       </div>
 
-      <el-dialog v-model="showGroupDialog" :title="editingGroup ? '编辑分组' : '新建分组'" width="450">
-        <el-form :model="groupForm" label-position="top">
-          <el-form-item label="分组名称">
-            <el-input v-model="groupForm.name" placeholder="如：技术文档、产品手册" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input v-model="groupForm.description" type="textarea" :rows="2" />
-          </el-form-item>
-          <el-form-item label="颜色">
-            <el-color-picker v-model="groupForm.color" />
-          </el-form-item>
-        </el-form>
-        <template #footer>
-          <el-button @click="showGroupDialog = false">取消</el-button>
-          <el-button type="primary" @click="saveGroup">保存</el-button>
-        </template>
-      </el-dialog>
+      <!-- 召回测试 -->
+      <div class="tab-content recall-content" v-show="activeTab === 'recall'">
+        <div class="recall-input-area">
+          <div class="recall-input-wrapper">
+            <el-input
+              v-model="recallQuery"
+              placeholder="输入测试查询语句，验证知识库召回效果..."
+              @keydown.enter.prevent="runRecallTest"
+              clearable
+            />
+            <el-button type="primary" @click="runRecallTest" :loading="recallLoading" :disabled="!recallQuery.trim()">
+              <el-icon><Promotion /></el-icon> 测试
+            </el-button>
+          </div>
+          <div class="recall-tips">
+            <span>Top K: {{ recallTopK }}</span>
+            <el-slider v-model="recallTopK" :min="1" :max="20" :step="1" style="width: 200px; margin-left: 12px;" />
+          </div>
+        </div>
+
+        <div class="recall-results" v-if="recallResults.length > 0">
+          <div class="recall-summary">
+            <span>共召回 <strong>{{ recallResults.length }}</strong> 条结果</span>
+            <el-tag type="info" size="small">{{ recallResults[0]?.retrieval_method === 'hybrid' ? '混合检索' : '纯向量检索' }}</el-tag>
+          </div>
+          <div v-for="(r, i) in recallResults" :key="r.chunk_id" class="recall-card glass-card">
+            <div class="recall-card-header">
+              <span class="recall-rank">#{{ i + 1 }}</span>
+              <el-icon><Document /></el-icon>
+              <span class="recall-name">{{ r.knowledge_name }}</span>
+              <el-tag size="small" :type="r.score >= 0.8 ? 'success' : r.score >= 0.5 ? 'warning' : 'danger'">
+                {{ (r.score * 100).toFixed(1) }}%
+              </el-tag>
+              <el-tag size="small" type="info">分块 #{{ r.chunk_index }}</el-tag>
+            </div>
+            <p class="recall-content">{{ r.content }}</p>
+          </div>
+        </div>
+
+        <div class="recall-empty" v-else-if="recallTested">
+          <el-icon :size="40"><Search /></el-icon>
+          <p>未找到相关结果，请尝试调整查询语句或检查知识库是否有已索引的文件</p>
+        </div>
+
+        <div class="recall-empty" v-else>
+          <el-icon :size="40"><DataAnalysis /></el-icon>
+          <p>输入查询语句测试知识库召回效果</p>
+        </div>
+      </div>
 
       <el-dialog v-model="showFileEditDialog" title="编辑文件" width="450">
         <el-form :model="fileForm" label-position="top">
@@ -150,27 +238,10 @@
           <el-form-item label="描述">
             <el-input v-model="fileForm.description" type="textarea" :rows="2" />
           </el-form-item>
-          <el-form-item label="所属分组">
-            <el-select v-model="fileForm.group_id" placeholder="选择分组" clearable style="width: 100%">
-              <el-option label="无分组" :value="null" />
-              <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
-            </el-select>
-          </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="showFileEditDialog = false">取消</el-button>
           <el-button type="primary" @click="saveFile">保存</el-button>
-        </template>
-      </el-dialog>
-
-      <el-dialog v-model="showMoveDialog" title="移动到分组" width="400">
-        <el-select v-model="moveTargetGroupId" placeholder="选择目标分组" clearable style="width: 100%">
-          <el-option label="无分组" :value="null" />
-          <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
-        </el-select>
-        <template #footer>
-          <el-button @click="showMoveDialog = false">取消</el-button>
-          <el-button type="primary" @click="confirmMove">移动</el-button>
         </template>
       </el-dialog>
     </div>
@@ -178,114 +249,100 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import api from '../api'
 
-const groups = ref([])
+const tabs = [
+  { key: 'files', label: '全部知识库', icon: 'FolderOpened' },
+  { key: 'settings', label: '设置', icon: 'Setting' },
+  { key: 'recall', label: '召回测试', icon: 'DataAnalysis' },
+]
+
+const activeTab = ref('files')
 const files = ref([])
-const currentGroupId = ref(null)
 const searchQuery = ref('')
 const searchResults = ref([])
 const uploading = ref(false)
-const totalCount = ref(0)
-
-const showGroupDialog = ref(false)
-const editingGroup = ref(null)
-const groupForm = ref({ name: '', description: '', color: '#2563eb' })
 
 const showFileEditDialog = ref(false)
 const editingFile = ref(null)
-const fileForm = ref({ name: '', description: '', group_id: null })
+const fileForm = ref({ name: '', description: '' })
 
-const showMoveDialog = ref(false)
-const movingFileId = ref(null)
-const moveTargetGroupId = ref(null)
-
-const currentGroupName = computed(() => {
-  if (currentGroupId.value === null) return '全部文件'
-  const g = groups.value.find(g => g.id === currentGroupId.value)
-  return g ? g.name : '全部文件'
+const embeddingModels = ref([])
+const savingSettings = ref(false)
+const settingsForm = ref({
+  embedding_model_id: null,
+  chunk_method: 'auto',
+  chunk_size: 500,
+  chunk_overlap: 50,
+  retrieval_method: 'pure',
+  retrieval_top_k: 5,
+  score_threshold: '0.5',
 })
 
-async function loadGroups() {
-  try { groups.value = await api.get('/knowledge/groups') } catch {}
-}
+const scoreThresholdNum = computed({
+  get: () => parseFloat(settingsForm.value.score_threshold) || 0.5,
+  set: (v) => { settingsForm.value.score_threshold = String(v) },
+})
+
+const recallQuery = ref('')
+const recallLoading = ref(false)
+const recallResults = ref([])
+const recallTested = ref(false)
+const recallTopK = ref(5)
 
 async function loadFiles() {
+  try { files.value = await api.get('/knowledge/files') } catch {}
+}
+
+async function loadSettings() {
   try {
-    const config = {}
-    if (currentGroupId.value !== null) config.params = { group_id: currentGroupId.value }
-    files.value = await api.get('/knowledge/files', config)
+    const data = await api.get('/knowledge/settings')
+    settingsForm.value = {
+      embedding_model_id: data.embedding_model_id,
+      chunk_method: data.chunk_method || 'auto',
+      chunk_size: data.chunk_size || 500,
+      chunk_overlap: data.chunk_overlap || 50,
+      retrieval_method: data.retrieval_method || 'pure',
+      retrieval_top_k: data.retrieval_top_k || 5,
+      score_threshold: data.score_threshold || '0.5',
+    }
+    recallTopK.value = data.retrieval_top_k || 5
   } catch {}
 }
 
-async function loadAllCount() {
+async function loadEmbeddingModels() {
+  try { embeddingModels.value = await api.get('/knowledge/embedding-models') } catch {}
+}
+
+async function saveSettings() {
+  savingSettings.value = true
   try {
-    const all = await api.get('/knowledge/files')
-    totalCount.value = all.length
-  } catch {}
-}
-
-watch(currentGroupId, loadFiles)
-
-function handleGroupCmd(cmd, group) {
-  if (cmd === 'edit') {
-    editingGroup.value = group
-    groupForm.value = { name: group.name, description: group.description, color: group.color }
-    showGroupDialog.value = true
-  } else if (cmd === 'delete') {
-    ElMessageBox.confirm(`确定删除分组「${group.name}」？文件不会被删除。`, '提示', { type: 'warning' })
-      .then(async () => {
-        await api.delete(`/knowledge/groups/${group.id}`)
-        ElMessage.success('分组已删除')
-        if (currentGroupId.value === group.id) currentGroupId.value = null
-        loadGroups()
-        loadFiles()
-      }).catch(() => {})
-  }
-}
-
-function openGroupDialog() {
-  editingGroup.value = null
-  groupForm.value = { name: '', description: '', color: '#2563eb' }
-  showGroupDialog.value = true
-}
-
-async function saveGroup() {
-  if (!groupForm.value.name) { ElMessage.warning('请输入分组名称'); return }
-  if (editingGroup.value) {
-    await api.put(`/knowledge/groups/${editingGroup.value.id}`, groupForm.value)
-  } else {
-    await api.post('/knowledge/groups', groupForm.value)
-  }
-  ElMessage.success('保存成功')
-  showGroupDialog.value = false
-  loadGroups()
+    await api.put('/knowledge/settings', settingsForm.value)
+    ElMessage.success('设置已保存')
+  } catch { ElMessage.error('保存失败') }
+  finally { savingSettings.value = false }
 }
 
 async function handleUpload(options) {
   const fd = new FormData()
   fd.append('file', options.file)
-  if (currentGroupId.value) fd.append('group_id', currentGroupId.value)
   uploading.value = true
   try {
     await api.post('/knowledge/files/upload', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      params: currentGroupId.value ? { group_id: currentGroupId.value } : {},
     })
     ElMessage.success('上传并索引成功')
     loadFiles()
-    loadGroups()
-    loadAllCount()
   } catch { ElMessage.error('上传失败') }
   finally { uploading.value = false }
 }
 
 function openFileEditDialog(file) {
   editingFile.value = file
-  fileForm.value = { name: file.name, description: file.description, group_id: file.group_id }
+  fileForm.value = { name: file.name, description: file.description }
   showFileEditDialog.value = true
 }
 
@@ -294,21 +351,6 @@ async function saveFile() {
   ElMessage.success('保存成功')
   showFileEditDialog.value = false
   loadFiles()
-  loadGroups()
-}
-
-function moveFile(file) {
-  movingFileId.value = file.id
-  moveTargetGroupId.value = file.group_id
-  showMoveDialog.value = true
-}
-
-async function confirmMove() {
-  await api.put(`/knowledge/files/${movingFileId.value}`, { group_id: moveTargetGroupId.value })
-  ElMessage.success('已移动')
-  showMoveDialog.value = false
-  loadFiles()
-  loadGroups()
 }
 
 async function reindexFile(id) {
@@ -322,18 +364,28 @@ async function deleteFile(id) {
   await api.delete(`/knowledge/files/${id}`)
   ElMessage.success('已删除')
   loadFiles()
-  loadGroups()
-  loadAllCount()
 }
 
 async function doSearch() {
   if (!searchQuery.value.trim()) return
   try {
-    const params = { query: searchQuery.value, top_k: 10 }
-    if (currentGroupId.value) params.group_id = currentGroupId.value
-    searchResults.value = await api.post('/knowledge/search', params)
+    searchResults.value = await api.post('/knowledge/search', { query: searchQuery.value, top_k: 10 })
     if (searchResults.value.length === 0) ElMessage.info('未找到相关结果')
   } catch { ElMessage.error('搜索失败') }
+}
+
+async function runRecallTest() {
+  if (!recallQuery.value.trim()) return
+  recallLoading.value = true
+  recallTested.value = true
+  try {
+    recallResults.value = await api.post('/knowledge/recall-test', {
+      query: recallQuery.value,
+      top_k: recallTopK.value,
+    })
+    if (recallResults.value.length === 0) ElMessage.info('未找到相关结果')
+  } catch { ElMessage.error('召回测试失败') }
+  finally { recallLoading.value = false }
 }
 
 function formatSize(bytes) {
@@ -354,7 +406,7 @@ function getFileIconBg(ext) {
   return `linear-gradient(135deg, ${map[ext] || '#64748b'}, ${map[ext] || '#64748b'}88)`
 }
 
-onMounted(() => { loadGroups(); loadFiles(); loadAllCount() })
+onMounted(() => { loadFiles(); loadSettings(); loadEmbeddingModels() })
 </script>
 
 <style scoped lang="scss">
@@ -364,73 +416,7 @@ onMounted(() => { loadGroups(); loadFiles(); loadAllCount() })
   overflow: hidden;
 }
 
-.group-sidebar {
-  width: 240px;
-  background: var(--bg-card);
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.sidebar-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
-
-  h3 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-}
-
-.group-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: var(--transition);
-  font-size: 13px;
-  color: var(--text-secondary);
-  position: relative;
-
-  &:hover { background: var(--bg-card-hover); }
-  &.active {
-    background: var(--gradient-primary);
-    color: white;
-    .el-icon, .group-count, .group-more { color: white; }
-  }
-
-  .el-icon { font-size: 16px; flex-shrink: 0; }
-  .group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .group-count {
-    font-size: 11px;
-    background: rgba(255,255,255,0.15);
-    padding: 1px 6px;
-    border-radius: 8px;
-    color: var(--text-muted);
-  }
-  .group-more {
-    font-size: 14px;
-    opacity: 0;
-    transition: var(--transition);
-    &:hover { color: var(--primary); }
-  }
-  &:hover .group-more { opacity: 1; }
-  &.active:hover .group-more { color: white; }
-}
-
-.sidebar-bottom {
-  padding: 12px;
-  border-top: 1px solid var(--border-color);
-  margin-top: auto;
-}
-
-.file-area {
+.knowledge-main {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -438,28 +424,65 @@ onMounted(() => { loadGroups(); loadFiles(); loadAllCount() })
   min-width: 0;
 }
 
-.file-header {
+.knowledge-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border-color);
+  background: var(--bg-topbar, var(--bg-card));
   flex-shrink: 0;
-
-  h2 {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .header-actions { display: flex; gap: 12px; }
+  height: 56px;
 }
 
-.search-results {
+.header-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: var(--transition);
+
+  &:hover {
+    color: var(--primary);
+    background: rgba(37, 99, 235, 0.06);
+  }
+
+  &.active {
+    color: var(--primary);
+    background: rgba(37, 99, 235, 0.1);
+  }
+
+  .el-icon { font-size: 16px; }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input {
+  width: 260px;
+}
+
+.tab-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 24px;
+  padding: 24px;
+}
 
+// ===== Files =====
+.search-results {
   .search-header {
     display: flex;
     justify-content: space-between;
@@ -496,8 +519,6 @@ onMounted(() => { loadGroups(); loadFiles(); loadAllCount() })
 }
 
 .file-table {
-  flex: 1;
-  overflow-y: auto;
   padding: 0;
 }
 
@@ -535,5 +556,151 @@ onMounted(() => { loadGroups(); loadFiles(); loadAllCount() })
   padding: 80px;
   color: var(--text-muted);
   gap: 12px;
+}
+
+// ===== Settings =====
+.settings-content {
+  max-width: 720px;
+}
+
+.settings-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(37, 99, 235, 0.04);
+
+  .el-icon { color: var(--primary); font-size: 16px; }
+}
+
+.section-body {
+  padding: 20px;
+}
+
+.settings-form {
+  .form-row {
+    display: flex;
+    gap: 20px;
+
+    .el-form-item {
+      flex: 1;
+    }
+  }
+}
+
+.settings-footer {
+  padding-top: 8px;
+}
+
+// ===== Recall Test =====
+.recall-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.recall-input-area {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+}
+
+.recall-input-wrapper {
+  display: flex;
+  gap: 12px;
+
+  .el-input { flex: 1; }
+}
+
+.recall-tips {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.recall-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+
+  strong { color: var(--primary); }
+}
+
+.recall-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recall-card {
+  padding: 16px;
+  transition: var(--transition);
+  &:hover { border-color: var(--primary); }
+
+  .recall-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+
+    .recall-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: var(--primary);
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .recall-name { font-weight: 600; font-size: 14px; color: var(--text-primary); flex: 1; }
+  }
+
+  .recall-content {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    background: rgba(37, 99, 235, 0.03);
+    border-radius: 8px;
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}
+
+.recall-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: var(--text-muted);
+  gap: 12px;
+
+  p { font-size: 14px; }
 }
 </style>

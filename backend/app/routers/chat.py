@@ -1,16 +1,19 @@
-import uuid
 import json
+import time
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
-from sqlalchemy import func as sql_func
+
 from ..database import get_db
-from ..models.chat_history import ChatHistory
-from ..models.user import User
+from ..entities import User
+from ..dependencies import get_current_user
 from ..schemas.chat import ChatMessage, ChatResponse, ChatSession
-from ..utils.auth import get_current_user
+from ..services.chat_service import save_message, get_history, get_sessions, create_session, delete_session
 from ..services.llm_client import get_llm_response, stream_llm_response
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -21,27 +24,27 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user_msg = ChatHistory(
-        user_id=current_user.id,
-        session_id=message.session_id,
-        role="user",
-        content=message.content,
-        agent_type=message.agent_type,
+    start_time = time.time()
+    logger.info(
+        f"[Chat] New message: user_id={current_user.id}, session={message.session_id}, agent_type={message.agent_type}, content_length={len(message.content)}"
     )
-    db.add(user_msg)
-    db.commit()
 
-    ai_content = await get_llm_response(db, message.agent_type, message.session_id, message.content, message.model_id)
-
-    ai_msg = ChatHistory(
-        user_id=current_user.id,
-        session_id=message.session_id,
-        role="assistant",
-        content=ai_content,
-        agent_type=message.agent_type,
+    save_message(
+        db, current_user.id, message.session_id, "user", message.content, message.agent_type
     )
-    db.add(ai_msg)
-    db.commit()
+
+    ai_content = await get_llm_response(
+        db, message.agent_type, message.session_id, message.content, message.model_id
+    )
+
+    save_message(
+        db, current_user.id, message.session_id, "assistant", ai_content, message.agent_type
+    )
+
+    elapsed = time.time() - start_time
+    logger.info(
+        f"[Chat] Message completed: session={message.session_id}, elapsed={elapsed:.2f}s, response_length={len(ai_content)}"
+    )
 
     return ChatResponse(
         session_id=message.session_id,
@@ -57,36 +60,41 @@ async def send_message_stream(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user_msg = ChatHistory(
-        user_id=current_user.id,
-        session_id=message.session_id,
-        role="user",
-        content=message.content,
-        agent_type=message.agent_type,
+    start_time = time.time()
+    logger.info(
+        f"[Chat Stream] New streaming message: user_id={current_user.id}, session={message.session_id}, agent_type={message.agent_type}, content_length={len(message.content)}"
     )
-    db.add(user_msg)
-    db.commit()
+
+    save_message(
+        db, current_user.id, message.session_id, "user", message.content, message.agent_type
+    )
 
     async def event_generator():
         full_content = ""
+        chunk_count = 0
         try:
-            async for chunk in stream_llm_response(db, message.agent_type, message.session_id, message.content, message.model_id):
+            async for chunk in stream_llm_response(
+                db, message.agent_type, message.session_id, message.content, message.model_id
+            ):
                 full_content += chunk
+                chunk_count += 1
                 data = json.dumps({"content": chunk}, ensure_ascii=False)
                 yield f"data: {data}\n\n"
         except Exception as e:
+            logger.error(
+                f"[Chat Stream] Stream error: session={message.session_id}, error={type(e).__name__}: {e}"
+            )
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
             return
 
-        ai_msg = ChatHistory(
-            user_id=current_user.id,
-            session_id=message.session_id,
-            role="assistant",
-            content=full_content,
-            agent_type=message.agent_type,
+        save_message(
+            db, current_user.id, message.session_id, "assistant", full_content, message.agent_type
         )
-        db.add(ai_msg)
-        db.commit()
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[Chat Stream] Completed: session={message.session_id}, elapsed={elapsed:.2f}s, chunks={chunk_count}, response_length={len(full_content)}"
+        )
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
 
@@ -107,21 +115,7 @@ async def get_chat_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    messages = (
-        db.query(ChatHistory)
-        .filter(ChatHistory.session_id == session_id, ChatHistory.user_id == current_user.id)
-        .order_by(ChatHistory.created_at)
-        .all()
-    )
-    return [
-        ChatResponse(
-            session_id=m.session_id,
-            role=m.role,
-            content=m.content,
-            agent_type=m.agent_type,
-        )
-        for m in messages
-    ]
+    return get_history(db, current_user.id, session_id)
 
 
 @router.get("/sessions", response_model=List[ChatSession])
@@ -129,61 +123,21 @@ async def get_chat_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    subq = (
-        db.query(
-            ChatHistory.session_id,
-            ChatHistory.agent_type,
-            sql_func.max(ChatHistory.created_at).label("max_time"),
-        )
-        .filter(ChatHistory.user_id == current_user.id, ChatHistory.role == "user")
-        .group_by(ChatHistory.session_id, ChatHistory.agent_type)
-        .subquery()
-    )
-
-    results = (
-        db.query(
-            ChatHistory.session_id,
-            ChatHistory.content,
-            ChatHistory.agent_type,
-            ChatHistory.created_at,
-        )
-        .join(
-            subq,
-            (ChatHistory.session_id == subq.c.session_id)
-            & (ChatHistory.agent_type == subq.c.agent_type)
-            & (ChatHistory.created_at == subq.c.max_time),
-        )
-        .order_by(ChatHistory.created_at.desc())
-        .all()
-    )
-
-    return [
-        ChatSession(
-            session_id=r.session_id,
-            last_message=r.content[:50] if r.content else "",
-            agent_type=r.agent_type,
-            created_at=str(r.created_at),
-        )
-        for r in results
-    ]
+    return get_sessions(db, current_user.id)
 
 
 @router.post("/sessions/new")
 async def create_new_session(
     current_user: User = Depends(get_current_user),
 ):
-    session_id = str(uuid.uuid4())
+    session_id = create_session()
     return {"session_id": session_id}
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(
+async def delete_chat_session(
     session_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    db.query(ChatHistory).filter(
-        ChatHistory.session_id == session_id, ChatHistory.user_id == current_user.id
-    ).delete()
-    db.commit()
-    return {"message": "Session deleted"}
+    return delete_session(db, current_user.id, session_id)

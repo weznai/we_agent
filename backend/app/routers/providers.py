@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+
 from ..database import get_db
-from ..models.provider import Provider
+from ..entities import Provider, User
+from ..entities.factory import ProviderFactory
 from ..schemas.provider import ProviderCreate, ProviderUpdate, ProviderResponse
-from ..utils.auth import get_current_user, get_current_admin
-from ..models.user import User
+from ..dependencies import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
@@ -28,7 +29,14 @@ async def create_provider(
     existing = db.query(Provider).filter(Provider.name == data.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Provider name already exists")
-    provider = Provider(**data.model_dump())
+    provider = ProviderFactory.create(
+        name=data.name,
+        display_name=data.display_name,
+        api_base=data.api_base,
+        api_key=data.api_key,
+        description=data.description,
+        logo=data.logo,
+    )
     db.add(provider)
     db.commit()
     db.refresh(provider)

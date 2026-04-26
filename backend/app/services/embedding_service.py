@@ -21,22 +21,33 @@ class EmbeddingService:
         start_time = time.time()
         try:
             from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(model_name)
             self._use_sentence_transformers = True
             self.dimension = self._model.get_sentence_embedding_dimension()
             elapsed = time.time() - start_time
-            logger.info(f"[Embedding] Local model loaded: model={model_name}, dim={self.dimension}, elapsed={elapsed:.2f}s")
+            logger.info(
+                f"[Embedding] Local model loaded: model={model_name}, dim={self.dimension}, elapsed={elapsed:.2f}s"
+            )
             return True
         except ImportError:
-            logger.info(f"[Embedding] sentence-transformers not installed, using hash-based embedding")
+            logger.info(
+                f"[Embedding] sentence-transformers not installed, using hash-based embedding"
+            )
             return False
         except Exception as e:
-            logger.warning(f"[Embedding] Failed to load model {model_name}: {type(e).__name__}: {e}")
+            logger.warning(
+                f"[Embedding] Failed to load model {model_name}: {type(e).__name__}: {e}"
+            )
             return False
 
-    def embed_texts(self, texts: List[str], model_name: Optional[str] = None) -> List[List[float]]:
+    def embed_texts(
+        self, texts: List[str], model_name: Optional[str] = None
+    ) -> List[List[float]]:
         start_time = time.time()
-        logger.info(f"[Embedding] embed_texts called: texts_count={len(texts)}, model_name={model_name}")
+        logger.info(
+            f"[Embedding] embed_texts called: texts_count={len(texts)}, model_name={model_name}"
+        )
 
         if model_name and model_name != "local" and not self._use_sentence_transformers:
             self._try_load_local_model(model_name)
@@ -45,15 +56,21 @@ class EmbeddingService:
             embeddings = self._model.encode(texts, normalize_embeddings=True)
             result = [emb.tolist() for emb in embeddings]
             elapsed = time.time() - start_time
-            logger.info(f"[Embedding] Embeddings generated (sentence-transformers): count={len(texts)}, dim={self.dimension}, elapsed={elapsed:.2f}s")
+            logger.info(
+                f"[Embedding] Embeddings generated (sentence-transformers): count={len(texts)}, dim={self.dimension}, elapsed={elapsed:.2f}s"
+            )
             return result
 
         result = [self._hash_embed(t) for t in texts]
         elapsed = time.time() - start_time
-        logger.info(f"[Embedding] Embeddings generated (hash-based): count={len(texts)}, dim={self.dimension}, elapsed={elapsed:.2f}s")
+        logger.info(
+            f"[Embedding] Embeddings generated (hash-based): count={len(texts)}, dim={self.dimension}, elapsed={elapsed:.2f}s"
+        )
         return result
 
-    def embed_query(self, query: str, model_name: Optional[str] = None) -> List[float]:
+    def embed_query(
+        self, query: str, model_name: Optional[str] = None
+    ) -> List[float]:
         results = self.embed_texts([query], model_name)
         return results[0]
 
@@ -61,7 +78,7 @@ class EmbeddingService:
         pieces = []
         chunk_size = max(1, len(text) // self.dimension + 1)
         for i in range(self.dimension):
-            piece = text[i * chunk_size:(i + 1) * chunk_size] or str(i)
+            piece = text[i * chunk_size : (i + 1) * chunk_size] or str(i)
             h = hashlib.md5(f"{piece}_{i}".encode()).hexdigest()
             val = int(h[:8], 16) / 0xFFFFFFFF
             pieces.append(val * 2 - 1)

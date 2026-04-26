@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+
 from ..database import get_db
-from ..models.user import User, UserRole
+from ..entities import User, UserRole
 from ..schemas.user import UserResponse, UserUpdate, PasswordChange
-from ..utils.auth import get_current_user, get_current_superuser, get_password_hash, verify_password
+from ..dependencies import get_current_user, get_current_superuser
+from ..utils.auth import get_password_hash, verify_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -44,7 +45,7 @@ async def change_password(
     return {"message": "Password changed successfully"}
 
 
-@router.get("", response_model=List[UserResponse])
+@router.get("", response_model=list[UserResponse])
 async def list_users(
     current_user: User = Depends(get_current_superuser),
     db: Session = Depends(get_db),

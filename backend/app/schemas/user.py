@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_serializer
 from typing import Optional
 from datetime import datetime
-from ..models.user import UserRole
+from ..entities import UserRole
 
 
 class UserRegister(BaseModel):

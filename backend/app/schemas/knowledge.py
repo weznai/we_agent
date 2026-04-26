@@ -78,3 +78,45 @@ class KnowledgeSearchResult(BaseModel):
     content: str
     score: float
     chunk_index: int
+
+
+class KnowledgeSettingsUpdate(BaseModel):
+    embedding_model_id: Optional[int] = None
+    chunk_method: Optional[str] = None
+    chunk_size: Optional[int] = None
+    chunk_overlap: Optional[int] = None
+    retrieval_method: Optional[str] = None
+    retrieval_top_k: Optional[int] = None
+    score_threshold: Optional[str] = None
+
+
+class KnowledgeSettingsResponse(BaseModel):
+    id: int
+    user_id: int
+    embedding_model_id: Optional[int] = None
+    chunk_method: str
+    chunk_size: int
+    chunk_overlap: int
+    retrieval_method: str
+    retrieval_top_k: int
+    score_threshold: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecallTestRequest(BaseModel):
+    query: str
+    top_k: Optional[int] = 5
+
+
+class RecallTestResult(BaseModel):
+    chunk_id: int
+    knowledge_id: int
+    knowledge_name: str
+    content: str
+    score: float
+    chunk_index: int
+    retrieval_method: str

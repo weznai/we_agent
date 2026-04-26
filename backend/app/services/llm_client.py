@@ -1,14 +1,15 @@
-import logging
+import time
 from typing import AsyncGenerator, Optional
+
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from ..models.model_mapping import ModelMapping
-from ..models.model import Model
-from ..models.provider import Provider
-from ..models.chat_history import ChatHistory
 
-logger = logging.getLogger(__name__)
+from ..entities import ChatHistory
+from ..services.model_service import resolve_model
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 SYSTEM_PROMPTS = {
     "chat": "You are a helpful, knowledgeable AI assistant. Respond in the same language the user uses. Be concise and accurate.",
@@ -17,84 +18,114 @@ SYSTEM_PROMPTS = {
 }
 
 
-def _resolve_model(db: Session, agent_type: str, model_id: Optional[int] = None):
-    if model_id:
-        model = db.query(Model).filter(Model.id == model_id, Model.is_active == True).first()
-        if not model:
-            raise HTTPException(status_code=400, detail=f"模型不存在或已禁用 (model_id={model_id})")
-    else:
-        mapping = (
-            db.query(ModelMapping)
-            .filter(ModelMapping.agent_type == agent_type)
-            .order_by(ModelMapping.priority.desc())
-            .first()
-        )
-        if not mapping:
-            raise HTTPException(status_code=400, detail=f"未配置 {agent_type} 类型的模型映射，请在系统管理中配置。")
-
-        model = db.query(Model).filter(Model.id == mapping.model_id, Model.is_active == True).first()
-        if not model:
-            raise HTTPException(status_code=400, detail=f"模型不存在或已禁用 (model_id={mapping.model_id})")
-
-    provider = db.query(Provider).filter(Provider.id == model.provider_id, Provider.is_active == True).first()
-    if not provider:
-        raise HTTPException(status_code=400, detail=f"供应商不存在或已禁用 (provider_id={model.provider_id})")
-
-    if not provider.api_base or not provider.api_key:
-        raise HTTPException(status_code=400, detail=f"供应商 {provider.display_name or provider.name} 未配置 API Base 或 API Key")
-
-    return model, provider
-
-
 def _build_messages(db: Session, session_id: str, user_content: str, agent_type: str):
+    logger.info(
+        f"Building messages: session_id={session_id}, agent_type={agent_type}, content_length={len(user_content)}"
+    )
+
     history = (
         db.query(ChatHistory)
         .filter(ChatHistory.session_id == session_id)
         .order_by(ChatHistory.created_at.asc())
         .all()
     )
-    messages = [{"role": "system", "content": SYSTEM_PROMPTS.get(agent_type, SYSTEM_PROMPTS["chat"])}]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPTS.get(agent_type, SYSTEM_PROMPTS["chat"])}
+    ]
     for h in history:
         messages.append({"role": h.role, "content": h.content})
     messages.append({"role": "user", "content": user_content})
+
+    logger.info(
+        f"Messages built: total_messages={len(messages)}, history_count={len(history)}"
+    )
     return messages
 
 
-async def get_llm_response(db: Session, agent_type: str, session_id: str, user_content: str, model_id: Optional[int] = None) -> str:
-    model, provider = _resolve_model(db, agent_type, model_id)
+async def get_llm_response(
+    db: Session,
+    agent_type: str,
+    session_id: str,
+    user_content: str,
+    model_id: Optional[int] = None,
+) -> str:
+    logger.info(
+        f"[LLM Call] Starting non-streaming request: session={session_id}, agent_type={agent_type}"
+    )
+
+    model, provider = resolve_model(db, agent_type, model_id)
     messages = _build_messages(db, session_id, user_content, agent_type)
 
+    start_time = time.time()
     try:
         client = AsyncOpenAI(base_url=provider.api_base, api_key=provider.api_key)
+        logger.info(
+            f"[LLM Call] Sending request to {provider.api_base}, model={model.name}, messages_count={len(messages)}"
+        )
+
         response = await client.chat.completions.create(
             model=model.name,
             messages=messages,
-            max_tokens=model.max_tokens or 4096,
+            max_tokens=model.max_tokens or 1048576,
             temperature=float(model.temperature) if model.temperature else 0.7,
         )
-        return response.choices[0].message.content
+
+        elapsed = time.time() - start_time
+        content = response.choices[0].message.content
+        logger.info(
+            f"[LLM Call] Response received: elapsed={elapsed:.2f}s, response_length={len(content)}, finish_reason={response.choices[0].finish_reason}"
+        )
+        return content
     except Exception as e:
-        logger.error(f"LLM API error: {e}")
-        raise HTTPException(status_code=502, detail=f"AI 服务调用失败: {str(e)}")
+        elapsed = time.time() - start_time
+        logger.error(f"[LLM Call] Failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"AI 服务调用失败: {str(e)}"
+        )
 
 
-async def stream_llm_response(db: Session, agent_type: str, session_id: str, user_content: str, model_id: Optional[int] = None) -> AsyncGenerator[str, None]:
-    model, provider = _resolve_model(db, agent_type, model_id)
+async def stream_llm_response(
+    db: Session,
+    agent_type: str,
+    session_id: str,
+    user_content: str,
+    model_id: Optional[int] = None,
+) -> AsyncGenerator[str, None]:
+    logger.info(
+        f"[LLM Stream] Starting streaming request: session={session_id}, agent_type={agent_type}"
+    )
+
+    model, provider = resolve_model(db, agent_type, model_id)
     messages = _build_messages(db, session_id, user_content, agent_type)
 
+    start_time = time.time()
+    chunk_count = 0
     try:
         client = AsyncOpenAI(base_url=provider.api_base, api_key=provider.api_key)
+        logger.info(
+            f"[LLM Stream] Sending streaming request to {provider.api_base}, model={model.name}, messages_count={len(messages)}"
+        )
+
         stream = await client.chat.completions.create(
             model=model.name,
             messages=messages,
-            max_tokens=model.max_tokens or 4096,
+            max_tokens=model.max_tokens or 1048576,
             temperature=float(model.temperature) if model.temperature else 0.7,
             stream=True,
         )
         async for chunk in stream:
             delta = chunk.choices[0].delta
             if delta.content:
+                chunk_count += 1
                 yield delta.content
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[LLM Stream] Completed: elapsed={elapsed:.2f}s, chunks={chunk_count}"
+        )
     except Exception as e:
-        logger.error(f"LLM streaming error: {e}")
+        elapsed = time.time() - start_time
+        logger.error(
+            f"[LLM Stream] Failed after {elapsed:.2f}s, chunks_received={chunk_count}: {type(e).__name__}: {e}"
+        )
         yield f"\n\n[错误] AI 服务调用失败: {str(e)}"
