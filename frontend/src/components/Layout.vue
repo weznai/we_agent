@@ -273,7 +273,7 @@ async function handleCommand(cmd) {
   }
 
   :deep(.el-sub-menu .el-menu-item) {
-    padding-left: 20px !important;
+    padding-left: 32px !important;
     margin: 1px 0;
     min-width: auto;
     height: 38px;

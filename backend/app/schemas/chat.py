@@ -7,6 +7,7 @@ class ChatMessage(BaseModel):
     content: str
     agent_type: Optional[str] = "chat"
     model_id: Optional[int] = None
+    images: Optional[List[str]] = None
 
 
 class ChatResponse(BaseModel):

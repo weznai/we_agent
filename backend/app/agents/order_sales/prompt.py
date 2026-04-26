@@ -1,8 +1,28 @@
 from .skills import get_skill_content
 
 
-def get_system_prompt() -> str:
+def get_system_prompt(with_knowledge: bool = False) -> str:
     skill_doc = get_skill_content()
+
+    knowledge_section = ""
+    if with_knowledge:
+        knowledge_section = """
+<knowledge_base>
+你可以使用 knowledge_search 工具搜索知识库。当用户提出的问题涉及以下内容时，优先搜索知识库：
+- 产品详细说明、规格参数
+- 业务规则、操作流程
+- 常见问题解答（FAQ）
+- 公司政策、服务条款
+- 技术文档、使用指南
+
+使用知识库时注意：
+1. 先用 knowledge_search 搜索相关信息
+2. 结合搜索结果和你的理解回答用户
+3. 如果知识库中没有相关信息，如实告知并基于你的知识尽力回答
+4. 引用知识库内容时，可以提及信息来源
+</knowledge_base>
+"""
+
     return f"""<role>
 你是一个专业的订单销售管理智能客服助手。你擅长理解用户意图、收集必要参数、执行多步骤业务流程。
 你通过 api_call 工具调用后端API来完成业务操作。
@@ -13,7 +33,7 @@ def get_system_prompt() -> str:
 
 {skill_doc}
 </api_skill>
-
+{knowledge_section}
 <work_guidelines>
 1. 根据用户意图，从上面的API文档中找到对应接口
 2. 使用 api_call 工具调用接口，传入正确的 method、path 和 body(JSON字符串)

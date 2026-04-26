@@ -20,6 +20,7 @@ def save_message(
     role: str,
     content: str,
     agent_type: str = "chat",
+    reasoning_content: str = None,
 ) -> ChatHistory:
     msg = ChatHistoryFactory.create(
         user_id=user_id,
@@ -27,6 +28,7 @@ def save_message(
         role=role,
         content=content,
         agent_type=agent_type,
+        reasoning_content=reasoning_content,
     )
     db.add(msg)
     db.commit()

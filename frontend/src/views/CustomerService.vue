@@ -46,6 +46,23 @@
         </div>
         <div class="toolbar-right">
           <el-select
+            v-model="selectedKnowledgeGroupId"
+            placeholder="知识库"
+            clearable
+            size="default"
+            class="knowledge-select"
+          >
+            <template #prefix>
+              <el-icon><Collection /></el-icon>
+            </template>
+            <el-option
+              v-for="g in knowledgeGroups"
+              :key="g.id"
+              :label="g.name"
+              :value="g.id"
+            />
+          </el-select>
+          <el-select
             v-model="selectedModelId"
             placeholder="默认模型"
             clearable
@@ -108,7 +125,13 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-bubble" v-html="renderMarkdown(msg.content)"></div>
+            <div class="message-bubble" v-if="msg.content" v-html="renderMarkdown(msg.content)"></div>
+            <div class="message-bubble status-bubble" v-else-if="msg.status">
+              <span class="status-text">{{ msg.status }}</span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
             <div class="message-actions" v-if="msg.role === 'assistant'">
               <span class="action-btn" @click="copyText(msg.content)" title="复制">
                 <el-icon><CopyDocument /></el-icon>
@@ -178,8 +201,10 @@ const currentSession = ref('')
 const isLoading = ref(false)
 const sidebarCollapsed = ref(false)
 const selectedModelId = ref(null)
+const selectedKnowledgeGroupId = ref(null)
 const availableModels = ref([])
 const providers = ref([])
+const knowledgeGroups = ref([])
 
 function renderMarkdown(text) {
   return marked(text || '')
@@ -203,6 +228,12 @@ async function loadModels() {
     ])
     providers.value = allProviders
     availableModels.value = allModels.filter(m => m.is_active && m.model_type === 'chat')
+  } catch {}
+}
+
+async function loadKnowledgeGroups() {
+  try {
+    knowledgeGroups.value = await api.get('/knowledge/groups')
   } catch {}
 }
 
@@ -250,6 +281,9 @@ async function sendMessage() {
     if (selectedModelId.value) {
       params.append('model_id', selectedModelId.value)
     }
+    if (selectedKnowledgeGroupId.value) {
+      params.append('knowledge_group_id', selectedKnowledgeGroupId.value)
+    }
 
     const response = await fetch(`/api/order-agent/chat/stream?${params.toString()}`, {
       method: 'POST',
@@ -263,7 +297,7 @@ async function sendMessage() {
       throw new Error(err.detail || '请求失败')
     }
 
-    const assistantMsg = { role: 'assistant', content: '' }
+    const assistantMsg = { role: 'assistant', content: '', status: '' }
     messages.value.push(assistantMsg)
     isLoading.value = false
 
@@ -285,8 +319,14 @@ async function sendMessage() {
           if (data.error) {
             assistantMsg.content += `\n\n[错误] ${data.error}`
           } else if (data.done) {
+            assistantMsg.status = ''
             await loadSessions()
+          } else if (data.status) {
+            assistantMsg.status = data.status
+            await nextTick()
+            scrollToBottom()
           } else if (data.content) {
+            assistantMsg.status = ''
             assistantMsg.content += data.content
           }
         }
@@ -294,6 +334,7 @@ async function sendMessage() {
       await nextTick()
       scrollToBottom()
     }
+    assistantMsg.status = ''
   } catch (e) {
     isLoading.value = false
     messages.value.push({ role: 'assistant', content: e.message || '抱歉，发生了错误，请稍后重试。' })
@@ -319,6 +360,7 @@ function scrollToBottom() {
 
 onMounted(() => {
   loadModels()
+  loadKnowledgeGroups()
   loadSessions()
   newSession()
 })
@@ -516,6 +558,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.knowledge-select {
+  width: 160px;
+
+  :deep(.el-input__wrapper) {
+    border-radius: 10px !important;
+  }
 }
 
 .model-select {
@@ -722,6 +772,30 @@ onMounted(() => {
   }
 }
 
+.message-bubble.status-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  color: #6b7280;
+  font-size: 14px;
+
+  .status-text {
+    white-space: nowrap;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981, #06b6d4);
+    animation: typing 1.4s ease-in-out infinite;
+
+    &:nth-child(2) { animation-delay: 0.2s; }
+    &:nth-child(3) { animation-delay: 0.4s; }
+  }
+}
+
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
   30% { transform: translateY(-8px); opacity: 1; }
@@ -747,7 +821,7 @@ onMounted(() => {
 
   :deep(.el-textarea__inner) {
     background: #f0f5ff !important;
-    border: 1.5px solid #dbe4f3 !important;
+    border: 1px solid #dbe4f3 !important;
     border-radius: 14px !important;
     padding: 13px 18px;
     color: var(--text-primary) !important;

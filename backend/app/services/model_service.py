@@ -8,6 +8,12 @@ from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+CHAT_LIKE_TYPES = {"chat", "vision"}
+
+
+def _is_chat_like(model: Model) -> bool:
+    return model.model_type in CHAT_LIKE_TYPES
+
 
 def resolve_model(
     db: Session,

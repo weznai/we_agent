@@ -100,7 +100,8 @@ def _sanitize_messages(messages):
                         )
                     )
             elif m.content:
-                sanitized.append(AIMessage(content=m.content, id=m.id, name=m.name))
+                kw = getattr(m, 'additional_kwargs', {}) or {}
+                sanitized.append(AIMessage(content=m.content, id=m.id, name=m.name, additional_kwargs=kw))
             else:
                 logger.debug(
                     f"Dropping orphaned AIMessage with tool_calls: "
@@ -196,6 +197,11 @@ async def stream_agent_response(agent, session_id: str, user_content: str):
     stream_chunks = 0
     start_time = time.time()
 
+    TOOL_STATUS_MAP = {
+        "knowledge_search": "正在搜索知识库...",
+        "api_call": "正在查询订单信息...",
+    }
+
     async for event in agent.astream_events(
         {"messages": [HumanMessage(content=user_content)]},
         config=config,
@@ -207,13 +213,16 @@ async def stream_agent_response(agent, session_id: str, user_content: str):
             if hasattr(chunk, "content") and chunk.content:
                 full_response += chunk.content
                 stream_chunks += 1
-                yield chunk.content
+                yield ("content", chunk.content)
         elif kind == "on_tool_start":
             tool_calls += 1
+            tool_name = event.get("name", "")
             tool_input = event["data"].get("input", {})
+            status_msg = TOOL_STATUS_MAP.get(tool_name, f"正在执行工具 {tool_name}...")
             logger.info(
-                f"[Agent Stream] Tool #{tool_calls} starting: name={event.get('name', '')}, input={str(tool_input)[:500]}"
+                f"[Agent Stream] Tool #{tool_calls} starting: name={tool_name}, input={str(tool_input)[:500]}"
             )
+            yield ("status", status_msg)
         elif kind == "on_tool_end":
             tool_output = event["data"].get("output", "")
             logger.info(

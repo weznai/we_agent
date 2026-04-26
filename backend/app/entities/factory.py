@@ -162,7 +162,10 @@ class KnowledgeSettingFactory:
     ) -> KnowledgeSetting:
         return KnowledgeSetting(
             user_id=user_id,
+            group_id=kwargs.get("group_id"),
             embedding_model_id=kwargs.get("embedding_model_id"),
+            enable_rerank=kwargs.get("enable_rerank", False),
+            rerank_model_id=kwargs.get("rerank_model_id"),
             chunk_method=kwargs.get("chunk_method", "auto"),
             chunk_size=kwargs.get("chunk_size", 500),
             chunk_overlap=kwargs.get("chunk_overlap", 50),
@@ -180,11 +183,13 @@ class ChatHistoryFactory:
         role: str,
         content: str,
         agent_type: str = "chat",
+        **kwargs,
     ) -> ChatHistory:
         return ChatHistory(
             user_id=user_id,
             session_id=session_id,
             role=role,
             content=content,
+            reasoning_content=kwargs.get("reasoning_content"),
             agent_type=agent_type,
         )

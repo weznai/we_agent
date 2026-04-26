@@ -113,7 +113,13 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-bubble" v-html="renderMarkdown(msg.content)"></div>
+            <div class="message-bubble" v-if="msg.content" v-html="renderMarkdown(msg.content)"></div>
+            <div class="message-bubble status-bubble" v-else-if="msg.status">
+              <span class="status-text">{{ msg.status }}</span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
             <div class="message-actions" v-if="msg.role === 'assistant'">
               <span class="action-btn" @click="copyText(msg.content)" title="复制">
                 <el-icon><CopyDocument /></el-icon>
@@ -273,7 +279,7 @@ async function sendMessage() {
       throw new Error(err.detail || '请求失败')
     }
 
-    const assistantMsg = { role: 'assistant', content: '' }
+    const assistantMsg = { role: 'assistant', content: '', status: '' }
     messages.value.push(assistantMsg)
     isLoading.value = false
 
@@ -295,8 +301,14 @@ async function sendMessage() {
           if (data.error) {
             assistantMsg.content += `\n\n[错误] ${data.error}`
           } else if (data.done) {
+            assistantMsg.status = ''
             await loadSessions()
+          } else if (data.status) {
+            assistantMsg.status = data.status
+            await nextTick()
+            scrollToBottom()
           } else if (data.content) {
+            assistantMsg.status = ''
             assistantMsg.content += data.content
           }
         }
@@ -304,6 +316,7 @@ async function sendMessage() {
       await nextTick()
       scrollToBottom()
     }
+    assistantMsg.status = ''
   } catch (e) {
     isLoading.value = false
     messages.value.push({ role: 'assistant', content: e.message || '抱歉，发生了错误，请稍后重试。' })
@@ -746,6 +759,30 @@ onMounted(() => {
   }
 }
 
+.message-bubble.status-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  color: #6b7280;
+  font-size: 14px;
+
+  .status-text {
+    white-space: nowrap;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2563eb, #0ea5e9);
+    animation: typing 1.4s ease-in-out infinite;
+
+    &:nth-child(2) { animation-delay: 0.2s; }
+    &:nth-child(3) { animation-delay: 0.4s; }
+  }
+}
+
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
   30% { transform: translateY(-8px); opacity: 1; }
@@ -771,7 +808,7 @@ onMounted(() => {
 
   :deep(.el-textarea__inner) {
     background: #f0f5ff !important;
-    border: 1.5px solid #dbe4f3 !important;
+    border: 1px solid #dbe4f3 !important;
     border-radius: 14px !important;
     padding: 13px 18px;
     color: var(--text-primary) !important;

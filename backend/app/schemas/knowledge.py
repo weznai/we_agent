@@ -72,7 +72,7 @@ class KnowledgeSearchRequest(BaseModel):
 
 
 class KnowledgeSearchResult(BaseModel):
-    chunk_id: int
+    chunk_id: str
     knowledge_id: int
     knowledge_name: str
     content: str
@@ -81,7 +81,10 @@ class KnowledgeSearchResult(BaseModel):
 
 
 class KnowledgeSettingsUpdate(BaseModel):
+    group_id: Optional[int] = None
     embedding_model_id: Optional[int] = None
+    enable_rerank: Optional[bool] = None
+    rerank_model_id: Optional[int] = None
     chunk_method: Optional[str] = None
     chunk_size: Optional[int] = None
     chunk_overlap: Optional[int] = None
@@ -93,7 +96,10 @@ class KnowledgeSettingsUpdate(BaseModel):
 class KnowledgeSettingsResponse(BaseModel):
     id: int
     user_id: int
+    group_id: Optional[int] = None
     embedding_model_id: Optional[int] = None
+    enable_rerank: bool
+    rerank_model_id: Optional[int] = None
     chunk_method: str
     chunk_size: int
     chunk_overlap: int
@@ -109,14 +115,28 @@ class KnowledgeSettingsResponse(BaseModel):
 
 class RecallTestRequest(BaseModel):
     query: str
+    group_id: Optional[int] = None
     top_k: Optional[int] = 5
 
 
 class RecallTestResult(BaseModel):
-    chunk_id: int
+    chunk_id: str
     knowledge_id: int
     knowledge_name: str
     content: str
     score: float
     chunk_index: int
     retrieval_method: str
+
+
+class ChunkInfo(BaseModel):
+    chunk_index: int
+    content: str
+    char_count: int
+
+
+class FileChunksResponse(BaseModel):
+    file_id: int
+    file_name: str
+    total_chunks: int
+    chunks: List[ChunkInfo]

@@ -34,7 +34,8 @@ async def send_message(
     )
 
     ai_content = await get_llm_response(
-        db, message.agent_type, message.session_id, message.content, message.model_id
+        db, message.agent_type, message.session_id, message.content, message.model_id,
+        images=message.images,
     )
 
     save_message(
@@ -72,10 +73,15 @@ async def send_message_stream(
     async def event_generator():
         full_content = ""
         chunk_count = 0
+        reasoning_content = None
         try:
             async for chunk in stream_llm_response(
-                db, message.agent_type, message.session_id, message.content, message.model_id
+                db, message.agent_type, message.session_id, message.content, message.model_id,
+                images=message.images,
             ):
+                if isinstance(chunk, dict) and "__meta__" in chunk:
+                    reasoning_content = chunk["__meta__"].get("reasoning_content")
+                    continue
                 full_content += chunk
                 chunk_count += 1
                 data = json.dumps({"content": chunk}, ensure_ascii=False)
@@ -88,7 +94,8 @@ async def send_message_stream(
             return
 
         save_message(
-            db, current_user.id, message.session_id, "assistant", full_content, message.agent_type
+            db, current_user.id, message.session_id, "assistant", full_content, message.agent_type,
+            reasoning_content=reasoning_content,
         )
 
         elapsed = time.time() - start_time

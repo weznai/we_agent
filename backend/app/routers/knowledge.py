@@ -19,6 +19,7 @@ from ..schemas.knowledge import (
     KnowledgeSettingsResponse,
     RecallTestRequest,
     RecallTestResult,
+    FileChunksResponse,
 )
 from ..services import knowledge_service
 from ..utils.logger import get_logger
@@ -95,14 +96,17 @@ async def create_file_entry(
     )
 
 
-@router.post("/files/upload", response_model=KnowledgeResponse)
+@router.post("/files/upload")
 async def upload_file(
     file: UploadFile = File(...),
     group_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return knowledge_service.upload_file(current_user.id, file, db, group_id=group_id)
+    content_bytes = await file.read()
+    return knowledge_service.upload_file(
+        current_user.id, file.filename, content_bytes, db, group_id=group_id
+    )
 
 
 @router.put("/files/{file_id}", response_model=KnowledgeResponse)
@@ -135,6 +139,15 @@ async def reindex_file(
     return knowledge_service.reindex_file(current_user.id, file_id, db)
 
 
+@router.get("/files/{file_id}/chunks", response_model=FileChunksResponse)
+async def get_file_chunks(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return knowledge_service.get_file_chunks(current_user.id, file_id, db)
+
+
 # ── Search ──────────────────────────────────────────────
 
 
@@ -154,10 +167,11 @@ async def search_knowledge(
 
 @router.get("/settings", response_model=KnowledgeSettingsResponse)
 async def get_settings(
+    group_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return knowledge_service.get_settings_response(current_user.id, db)
+    return knowledge_service.get_settings_response(current_user.id, db, group_id=group_id)
 
 
 @router.put("/settings", response_model=KnowledgeSettingsResponse)
@@ -188,4 +202,4 @@ async def recall_test(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return knowledge_service.recall_test(current_user.id, req.query, req.top_k, db)
+    return knowledge_service.recall_test(current_user.id, req.query, req.top_k, db, group_id=req.group_id)

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 50
     ORDER_API_BASE_URL: str = "http://121.43.198.13:8080"
     ORDER_API_KEY: str = ""
+    CHROMADB_PATH: str = "./data/chromadb"
+    CHROMADB_COLLECTION: str = "knowledge_chunks"
 
 
 @lru_cache()

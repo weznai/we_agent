@@ -23,6 +23,7 @@ api.interceptors.response.use(
     const status = error.response?.status
     const msg = error.response?.data?.detail || error.message || '请求失败'
     const url = error.config?.url || ''
+    const silent = error.config?.headers?.['X-Silent-Error']
 
     if (status === 401 && !url.includes('/auth/')) {
       localStorage.removeItem('token')
@@ -31,10 +32,12 @@ api.interceptors.response.use(
         isRedirecting = true
         router.push('/login').finally(() => { isRedirecting = false })
       }
-    } else if (status === 400) {
-      ElMessage.warning(msg)
-    } else if (status !== 404) {
-      ElMessage.error(msg)
+    } else if (!silent) {
+      if (status === 400) {
+        ElMessage.warning(msg)
+      } else if (status !== 404) {
+        ElMessage.error(msg)
+      }
     }
 
     return Promise.reject(error)

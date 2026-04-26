@@ -16,5 +16,6 @@ class ChatHistory(Base):
     session_id = Column(String(100), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
+    reasoning_content = Column(Text, default=None, nullable=True)
     agent_type = Column(String(50), default="chat")
     created_at = Column(DateTime, default=_now, server_default=sa_text("CURRENT_TIMESTAMP"))

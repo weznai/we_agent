@@ -22,12 +22,14 @@ async def order_agent_chat_stream(
     session_id: str,
     content: str,
     model_id: Optional[int] = None,
+    knowledge_group_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     start_time = time.time()
     logger.info(
-        f"[OrderAgent] New request: user_id={current_user.id}, session={session_id}, content_length={len(content)}, model_id={model_id}"
+        f"[OrderAgent] New request: user_id={current_user.id}, session={session_id}, "
+        f"content_length={len(content)}, model_id={model_id}, knowledge_group_id={knowledge_group_id}"
     )
 
     save_message(db, current_user.id, session_id, "user", content, "customer_service")
@@ -36,8 +38,15 @@ async def order_agent_chat_stream(
         full_content = ""
         chunk_count = 0
         try:
-            async for chunk in stream_order_agent_response(db, session_id, content, model_id):
-                if chunk:
+            async for event_type, chunk in stream_order_agent_response(
+                db, session_id, content,
+                user_id=current_user.id,
+                model_id=model_id,
+                knowledge_group_id=knowledge_group_id,
+            ):
+                if event_type == "status":
+                    yield f"data: {json.dumps({'status': chunk}, ensure_ascii=False)}\n\n"
+                elif event_type == "content" and chunk:
                     full_content += chunk
                     chunk_count += 1
                     data = json.dumps({"content": chunk}, ensure_ascii=False)

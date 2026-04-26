@@ -9,3 +9,7 @@ __pycache__/
 venv/
 dist/
 *.local
+backend/data/chromadb/
+backend/data/uploads/*.pdf
+backend/data/uploads/*.docx
+backend/data/uploads/*.txt
