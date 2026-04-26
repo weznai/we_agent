@@ -54,6 +54,14 @@
             <el-icon class="menu-icon-child"><Service /></el-icon>
             <template #title>智能客服</template>
           </el-menu-item>
+          <el-menu-item index="/smart-assistant">
+            <el-icon class="menu-icon-child"><Monitor /></el-icon>
+            <template #title>智能助手</template>
+          </el-menu-item>
+          <el-menu-item index="/smart-measurement">
+            <el-icon class="menu-icon-child"><DataAnalysis /></el-icon>
+            <template #title>智能测量</template>
+          </el-menu-item>
         </el-sub-menu>
 
         <el-menu-item index="/knowledge">
@@ -66,17 +74,9 @@
             <el-icon class="menu-icon-parent"><Setting /></el-icon>
             <span>系统管理</span>
           </template>
-          <el-menu-item index="/providers">
-            <el-icon class="menu-icon-child"><Connection /></el-icon>
-            <template #title>大模型供应商</template>
-          </el-menu-item>
-          <el-menu-item index="/models">
+          <el-menu-item index="/model-config">
             <el-icon class="menu-icon-child"><Cpu /></el-icon>
-            <template #title>模型管理</template>
-          </el-menu-item>
-          <el-menu-item index="/model-mappings">
-            <el-icon class="menu-icon-child"><Switch /></el-icon>
-            <template #title>模型映射</template>
+            <template #title>模型配置</template>
           </el-menu-item>
         </el-sub-menu>
 
@@ -147,8 +147,8 @@ const isCollapsed = ref(false)
 const activeMenu = computed(() => route.path)
 const defaultOpeneds = computed(() => {
   const path = route.path
-  if (path.startsWith('/chat') || path.startsWith('/translation') || path.startsWith('/customer-service')) return ['agent']
-  if (path.startsWith('/providers') || path.startsWith('/models') || path.startsWith('/model-mappings')) return ['system']
+  if (path.startsWith('/chat') || path.startsWith('/translation') || path.startsWith('/customer-service') || path.startsWith('/smart-assistant') || path.startsWith('/smart-measurement')) return ['agent']
+  if (path.startsWith('/model-config')) return ['system']
   return ['agent', 'system']
 })
 
@@ -177,14 +177,14 @@ async function handleCommand(cmd) {
 }
 
 .sidebar {
-  width: 260px;
-  background: linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%);
+  width: 240px;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   flex-shrink: 0;
-  border-right: 1px solid #cbd5e1;
+  border-right: 1px solid #eef2f7;
 
   &.collapsed {
     width: 64px;
@@ -192,34 +192,33 @@ async function handleCommand(cmd) {
 }
 
 .sidebar-header {
-  height: 64px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid #cbd5e1;
   padding: 0 16px;
   flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
+  padding-left: 4px;
 
   .logo-icon {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     flex-shrink: 0;
   }
 
   .logo-text {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
+    letter-spacing: -0.3px;
     white-space: nowrap;
   }
 }
@@ -234,63 +233,159 @@ async function handleCommand(cmd) {
   flex: 1;
   overflow-y: auto;
   background: transparent !important;
-  padding: 8px;
+  padding: 4px 12px;
 
-  :deep(.el-menu-item),
+  :deep(.el-sub-menu) {
+    margin: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    overflow: visible;
+  }
+
   :deep(.el-sub-menu__title) {
-    border-radius: 8px;
-    margin: 2px 0;
-    height: 44px;
-    line-height: 44px;
+    height: 36px;
+    line-height: 36px;
     color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    background: transparent !important;
+    padding-left: 20px !important;
 
     &:hover {
-      background: rgba(37, 99, 235, 0.08) !important;
-      color: var(--text-primary);
+      background: transparent !important;
+    color: var(--text-primary);
+    }
+
+    .el-icon {
+      display: none;
+    }
+
+    .el-sub-menu__icon-arrow {
+      display: none;
+    }
+  }
+
+  :deep(.el-sub-menu .el-menu) {
+    background: transparent !important;
+  }
+
+  :deep(.el-sub-menu .el-menu-item) {
+    padding-left: 20px !important;
+    margin: 1px 0;
+    min-width: auto;
+    height: 38px;
+    line-height: 38px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    background: transparent !important;
+    border: none;
+    position: relative;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: #f0f5ff !important;
+      color: var(--primary);
     }
 
     &.is-active {
-      background: linear-gradient(135deg, #60a5fa 0%, #38bdf8 100%) !important;
-      color: #ffffff !important;
+      background: #eff6ff !important;
+      color: var(--primary) !important;
+      font-weight: 500;
 
-      .el-icon {
-        color: #ffffff !important;
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--primary);
       }
     }
   }
 
-  :deep(.el-sub-menu .el-menu-item) {
-    padding-left: 52px !important;
-    min-width: auto;
-    height: 40px;
-    line-height: 40px;
+  :deep(.el-menu-item:not(.el-sub-menu .el-menu-item)) {
+    border-radius: 8px;
+    margin: 1px 0;
+    height: 38px;
+    line-height: 38px;
     color: var(--text-secondary);
+    font-size: 14px;
+    background: transparent !important;
+    border: none;
+    position: relative;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: #f0f5ff !important;
+      color: var(--primary);
+    }
+
+    &.is-active {
+      background: #eff6ff !important;
+      color: var(--primary) !important;
+      font-weight: 500;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--primary);
+      }
+
+      .el-icon {
+        color: var(--primary) !important;
+      }
+    }
   }
 
   :deep(.el-icon) {
-    font-size: 18px;
+    font-size: 17px;
+    transition: color 0.2s ease;
   }
 
   .menu-icon-top {
-    color: #2563eb;
+    color: var(--primary);
   }
 
   .menu-icon-parent {
-    color: #1d4ed8;
+    color: var(--primary);
   }
 
   .menu-icon-child {
-    color: #0ea5e9;
+    color: var(--secondary);
   }
 
-  :deep(.el-menu-item.is-active) .menu-icon-top,
+  :deep(.el-menu-item:hover) .menu-icon-child {
+    color: var(--secondary);
+  }
+
   :deep(.el-menu-item.is-active) .menu-icon-child {
-    color: white !important;
+    color: var(--primary) !important;
   }
 
   :deep(.el-sub-menu .el-sub-menu__icon-arrow) {
-    color: var(--text-secondary);
+    color: var(--text-muted);
   }
+}
+
+.sidebar-section-label {
+  padding: 16px 20px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  user-select: none;
 }
 
 .main-area {
@@ -302,33 +397,32 @@ async function handleCommand(cmd) {
 }
 
 .topbar {
-  height: 64px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-topbar);
+  border-bottom: 1px solid #eef2f7;
+  background: #ffffff;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .collapse-btn {
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
-  color: var(--text-secondary);
-  transition: var(--transition);
-  padding: 8px;
-  border-radius: 8px;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  padding: 6px;
+  border-radius: 6px;
 
   &:hover {
-    background: rgba(37, 99, 235, 0.06);
+    background: #f0f5ff;
     color: var(--primary);
   }
 }
@@ -341,24 +435,24 @@ async function handleCommand(cmd) {
 .user-avatar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
-  padding: 4px 12px;
+  padding: 4px 10px 4px 4px;
   border-radius: 20px;
-  transition: var(--transition);
+  transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(37, 99, 235, 0.06);
+    background: #f0f5ff;
   }
 
   .user-name {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-primary);
     font-weight: 500;
   }
 
   .el-icon {
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 12px;
   }
 }
@@ -366,6 +460,6 @@ async function handleCommand(cmd) {
 .content-area {
   flex: 1;
   overflow: hidden;
-  background: #f1f5f9;
+  background: #f5f7fa;
 }
 </style>
