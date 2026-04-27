@@ -190,8 +190,9 @@ def _extract_xlsx(content_bytes: bytes) -> str:
 def _parse_with_mineru(file_path: str, filename: str, ext: str):
     from ..utils.mineru_parser import MineruParser
 
-    output_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output", uuid.uuid4().hex[:8])
+    output_dir = os.path.abspath(os.path.join(settings.UPLOAD_DIR, "mineru_output", uuid.uuid4().hex[:8]))
     os.makedirs(output_dir, exist_ok=True)
+    file_path = os.path.abspath(file_path)
     logger.info(f"[Knowledge] >>> MineRU parse start: file={filename}, ext={ext}, output_dir={output_dir}")
 
     ext_lower = ext.lower()
@@ -407,7 +408,7 @@ def upload_file(
                 logger.info(f"[Knowledge] <<< Phase 1 DONE (PyPDF2): content_length={len(content_text)}, elapsed={time.time() - _t1:.2f}s")
             except Exception as e2:
                 extract_error = str(e2)
-                logger.error(f"[Knowledge] !!! Phase 1 FAILED completely (both MineRU and PyPDF2): {e2}", exc_info=True)
+                logger.error(f"[Knowledge] !!! Phase 1 FAILED completely: {e2}", exc_info=True)
 
     elif ext.lower() in ("doc", "docx", "ppt", "pptx", "xls", "xlsx"):
         logger.info(f"[Knowledge] >>> Phase 1: Office doc parsing (MineRU)")
@@ -1074,6 +1075,8 @@ async def rag_answer_stream(
         if r.page_idx is not None:
             ref_item += f", 第{r.page_idx + 1}页"
         ref_item += f"\n{r.content}"
+        if r.content_path and r.content_path.startswith("/"):
+            ref_item += f"\n[关联图片: {r.content_path}]"
         ref_parts.append(ref_item)
 
     references = "\n\n".join(ref_parts)
@@ -1084,7 +1087,9 @@ async def rag_answer_stream(
         "1. 基于参考资料内容回答，如果参考资料不足以回答，请明确说明\n"
         "2. 引用资料时使用 [参考资料X] 格式标注来源\n"
         "3. 回答要准确、完整、有条理\n"
-        "4. 使用中文回答"
+        "4. 如果参考资料中包含[关联图片]，你必须在回答中用 Markdown 图片语法展示该图片，格式为：![图片描述](图片URL)\n"
+        "5. 使用中文回答\n"
+        "6. 必须展示所有关联图片，不要省略"
     )
 
     user_msg = f"用户问题：{query}\n\n参考资料：\n{references}"

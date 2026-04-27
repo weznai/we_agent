@@ -7,6 +7,36 @@ from ..config import get_settings
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+settings = get_settings()
+
+
+def _to_url_path(abs_path: str) -> str:
+    mineru_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output")
+    try:
+        if os.path.isabs(abs_path):
+            rel = os.path.relpath(abs_path, os.path.dirname(mineru_dir))
+        else:
+            rel = abs_path
+        url = f"/mineru-output/{rel.replace(os.sep, '/')}"
+        url = url.replace("/mineru-output/mineru_output/", "/mineru-output/")
+        return url
+    except ValueError:
+        return abs_path
+
+
+def _resolve_img_path(output_dir: str, img_path: str) -> str:
+    if not img_path:
+        return ""
+    if os.path.isabs(img_path):
+        return img_path
+    full = os.path.join(output_dir, img_path)
+    if os.path.exists(full):
+        return full
+    for root, dirs, files in os.walk(output_dir):
+        candidate = os.path.join(root, img_path)
+        if os.path.exists(candidate):
+            return candidate
+    return full
 
 
 def split_text_to_chunks(
@@ -259,13 +289,13 @@ def _chunk_image_group(
         if ocr_text:
             content_parts.append(f"[图片内容: {ocr_text}]")
 
-        full_img_path = os.path.join(output_dir, img_path) if not os.path.isabs(img_path) else img_path
+        full_img_path = _resolve_img_path(output_dir, img_path)
 
         chunks.append({
             "chunk_type": "image",
             "content": "\n".join(content_parts) if content_parts else f"[图片: {img_path}]",
             "page_idx": item.get("page_idx"),
-            "content_path": full_img_path,
+            "content_path": _to_url_path(full_img_path),
             "image_path": img_path,
             "metadata": {
                 "embedding_type": "visual",
@@ -280,7 +310,7 @@ def _chunk_image_group(
                 "chunk_type": "image",
                 "content": caption,
                 "page_idx": item.get("page_idx"),
-                "content_path": full_img_path,
+                "content_path": _to_url_path(full_img_path),
                 "image_path": img_path,
                 "metadata": {
                     "embedding_type": "text",
@@ -319,14 +349,14 @@ def _chunk_table_group(
         content = "\n".join(content_parts)
         full_img_path = None
         if img_path:
-            full_img_path = os.path.join(output_dir, img_path) if not os.path.isabs(img_path) else img_path
+            full_img_path = _resolve_img_path(output_dir, img_path)
 
         if img_path:
             chunks.append({
                 "chunk_type": "table",
                 "content": content,
                 "page_idx": item.get("page_idx"),
-                "content_path": full_img_path,
+                "content_path": _to_url_path(full_img_path),
                 "image_path": img_path,
                 "metadata": {
                     "embedding_type": "visual",
@@ -340,7 +370,7 @@ def _chunk_table_group(
             "chunk_type": "table",
             "content": content,
             "page_idx": item.get("page_idx"),
-            "content_path": full_img_path,
+            "content_path": _to_url_path(full_img_path),
             "image_path": img_path,
             "metadata": {
                 "embedding_type": "text",
@@ -393,7 +423,7 @@ def _chunk_mixed_group(
             content_parts.append("\n".join(section))
 
             if img_path:
-                full_path = os.path.join(output_dir, img_path) if not os.path.isabs(img_path) else img_path
+                full_path = _resolve_img_path(output_dir, img_path)
                 table_image_paths.append((img_path, full_path))
 
         elif item_type == "image":
@@ -414,7 +444,7 @@ def _chunk_mixed_group(
                 content_parts.append("\n".join(section))
 
             if img_path:
-                full_path = os.path.join(output_dir, img_path) if not os.path.isabs(img_path) else img_path
+                full_path = _resolve_img_path(output_dir, img_path)
                 image_paths_in_group.append((img_path, full_path))
 
         elif item_type == "equation":
@@ -438,7 +468,7 @@ def _chunk_mixed_group(
         "chunk_type": "mixed",
         "content": full_content,
         "page_idx": page_idx,
-        "content_path": all_visual[0][2] if all_visual else None,
+        "content_path": _to_url_path(all_visual[0][2]) if all_visual else None,
         "metadata": {
             "embedding_type": "text",
             "has_table": bool(table_image_paths),
@@ -452,7 +482,7 @@ def _chunk_mixed_group(
             "chunk_type": "mixed",
             "content": full_content,
             "page_idx": page_idx,
-            "content_path": full_path,
+            "content_path": _to_url_path(full_path),
             "image_path": img_path,
             "metadata": {
                 "embedding_type": "visual",

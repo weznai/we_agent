@@ -351,7 +351,7 @@
                 </div>
                 <p class="rag-chunk-text">{{ r.content }}</p>
                 <div v-if="r.content_path" class="rag-chunk-image">
-                  <el-image :src="'/mineru-output/' + r.content_path.split('mineru_output/').pop()" fit="contain" style="max-height: 200px" :preview-src-list="['/mineru-output/' + r.content_path.split('mineru_output/').pop()]" />
+                  <el-image :src="`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`" fit="contain" style="max-height: 200px" :preview-src-list="[`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`]" />
                 </div>
               </div>
             </div>

@@ -25,7 +25,7 @@ class MineruParser:
         formula: bool = True,
         table: bool = True,
         device: Optional[str] = None,
-        source: str = "huggingface",
+        source: Optional[str] = None,
         vlm_url: Optional[str] = None,
     ) -> None:
         cmd = [
@@ -35,8 +35,6 @@ class MineruParser:
             "-m", method,
             "-b", backend,
         ]
-        if source:
-            cmd.extend(["--source", source])
         if lang:
             cmd.extend(["-l", lang])
         if start_page is not None:
@@ -47,48 +45,27 @@ class MineruParser:
             cmd.extend(["-f", "false"])
         if not table:
             cmd.extend(["-t", "false"])
-        if device:
-            cmd.extend(["-d", device])
         if vlm_url:
             cmd.extend(["-u", vlm_url])
 
+        logger.info(f"[MinerU] >>> CLI: {' '.join(cmd)}")
+
         try:
             env = os.environ.copy()
-            env.setdefault("HF_HUB_OFFLINE", "1")
-            env.setdefault("TRANSFORMERS_OFFLINE", "1")
-            logger.info(f"[MinerU] Starting command: {' '.join(cmd)}")
             result = subprocess.run(
                 cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                encoding="utf-8",
-                errors="ignore",
                 env=env,
-                timeout=120,
+                timeout=300,
             )
-            logger.info(f"[MinerU] Command succeeded: stdout={result.stdout[:300] if result.stdout else '(empty)'}")
-        except subprocess.TimeoutExpired as e:
-            logger.error(
-                f"[MinerU] TIMEOUT after 120s! Command: {' '.join(cmd)}"
-            )
-            if e.stdout:
-                logger.error(f"[MinerU] Timeout stdout: {e.stdout[:500]}")
-            if e.stderr:
-                logger.error(f"[MinerU] Timeout stderr: {e.stderr[:500]}")
-            raise RuntimeError(f"MinerU command timed out after 120s")
-        except subprocess.CalledProcessError as e:
-            logger.error(
-                f"[MinerU] FAILED (exit {e.returncode})! Command: {' '.join(cmd)}"
-            )
-            logger.error(f"[MinerU] stderr: {e.stderr[:1000] if e.stderr else '(empty)'}")
-            logger.error(f"[MinerU] stdout: {e.stdout[:1000] if e.stdout else '(empty)'}")
-            raise
+            if result.returncode != 0:
+                logger.error(f"[MinerU] !!! FAILED (exit {result.returncode})")
+                raise RuntimeError(f"MinerU exited with code {result.returncode}")
+            logger.info(f"[MinerU] <<< CLI succeeded")
+        except subprocess.TimeoutExpired:
+            logger.error(f"[MinerU] !!! TIMEOUT after 300s!")
+            raise RuntimeError("MinerU timed out after 300s")
         except FileNotFoundError:
-            raise RuntimeError(
-                "mineru command not found. Please install MinerU 2.0:\n"
-                "pip install -U 'mineru[core]'"
-            )
+            raise RuntimeError("mineru command not found. pip install -U 'mineru[core]'")
 
     @staticmethod
     def _read_output_files(
@@ -102,21 +79,43 @@ class MineruParser:
             md_file = subdir / method / f"{file_stem}.md"
             json_file = subdir / method / f"{file_stem}_content_list.json"
 
+        logger.info(f"[MinerU] Looking for output: md={md_file}, json={json_file}")
+
         md_content = ""
         if md_file.exists():
             try:
                 with open(md_file, "r", encoding="utf-8") as f:
                     md_content = f.read()
+                logger.info(f"[MinerU] Read markdown: {len(md_content)} chars")
             except Exception as e:
-                logger.warning(f"Could not read markdown file {md_file}: {e}")
+                logger.warning(f"[MinerU] Could not read markdown file {md_file}: {e}")
 
         content_list = []
         if json_file.exists():
             try:
                 with open(json_file, "r", encoding="utf-8") as f:
                     content_list = json.load(f)
+                logger.info(f"[MinerU] Read content_list: {len(content_list)} items")
             except Exception as e:
-                logger.warning(f"Could not read JSON file {json_file}: {e}")
+                logger.warning(f"[MinerU] Could not read JSON file {json_file}: {e}")
+
+        if not md_content and not content_list:
+            logger.warning(f"[MinerU] No output found at expected paths, searching...")
+            for f in output_dir.rglob("*.md"):
+                try:
+                    md_content = f.read_text(encoding="utf-8")
+                    logger.info(f"[MinerU] Found markdown via search: {f}")
+                    break
+                except Exception:
+                    continue
+            for f in output_dir.rglob("*_content_list.json"):
+                try:
+                    with open(f, "r", encoding="utf-8") as fh:
+                        content_list = json.load(fh)
+                    logger.info(f"[MinerU] Found content_list via search: {f}")
+                    break
+                except Exception:
+                    continue
 
         return content_list, md_content
 

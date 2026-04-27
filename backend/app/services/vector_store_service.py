@@ -87,10 +87,7 @@ class VectorStoreService:
         self._check_and_rebuild_dim(len(query_embedding))
 
         if group_id is not None:
-            where: Dict[str, Any] = {"$and": [
-                {"user_id": user_id},
-                {"group_id": group_id},
-            ]}
+            where: Dict[str, Any] = {"user_id": user_id}
         else:
             where = {"user_id": user_id}
 
@@ -130,7 +127,10 @@ class VectorStoreService:
                     }
                 )
 
-        items.sort(key=lambda x: x["score"], reverse=True)
+        items.sort(key=lambda x: (
+            0 if (group_id is None or x.get("metadata", {}).get("group_id") == group_id) else 1,
+            -x["score"],
+        ))
         return items[:top_k]
 
     def delete_by_knowledge_id(self, knowledge_id: int):

@@ -1,7 +1,7 @@
 import json
 import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -270,3 +270,19 @@ async def rag_answer_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/mineru-image/{filename:path}")
+async def get_mineru_image(filename: str):
+    from ..config import get_settings
+    settings = get_settings()
+    mineru_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output")
+    if not os.path.exists(mineru_dir):
+        raise HTTPException(status_code=404, detail="mineru_output not found")
+    for root, dirs, files in os.walk(mineru_dir):
+        if filename in files:
+            return FileResponse(
+                os.path.join(root, filename),
+                media_type="image/jpeg",
+            )
+    raise HTTPException(status_code=404, detail=f"Image not found: {filename}")
