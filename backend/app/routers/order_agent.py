@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..entities import User
 from ..dependencies import get_current_user
 from ..services.chat_service import save_message
@@ -45,7 +45,12 @@ async def order_agent_chat_stream(
                 knowledge_group_id=knowledge_group_id,
             ):
                 if event_type == "status":
-                    yield f"data: {json.dumps({'status': chunk}, ensure_ascii=False)}\n\n"
+                    payload = {"status": chunk["status"]} if isinstance(chunk, dict) else {"status": chunk}
+                    if isinstance(chunk, dict) and chunk.get("search_query"):
+                        payload["search_query"] = chunk["search_query"]
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                elif event_type == "search_results":
+                    yield f"data: {json.dumps({'search_results': chunk}, ensure_ascii=False)}\n\n"
                 elif event_type == "content" and chunk:
                     full_content += chunk
                     chunk_count += 1
@@ -59,7 +64,11 @@ async def order_agent_chat_stream(
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
             return
 
-        save_message(db, current_user.id, session_id, "assistant", full_content, "customer_service")
+        save_db = SessionLocal()
+        try:
+            save_message(save_db, current_user.id, session_id, "assistant", full_content, "customer_service")
+        finally:
+            save_db.close()
 
         elapsed = time.time() - start_time
         logger.info(

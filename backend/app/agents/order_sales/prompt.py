@@ -1,4 +1,4 @@
-from .skills import get_skill_content
+from ...tools.api_call import get_skill_content
 
 
 def get_system_prompt(with_knowledge: bool = False) -> str:
@@ -19,7 +19,13 @@ def get_system_prompt(with_knowledge: bool = False) -> str:
 1. 先用 knowledge_search 搜索相关信息
 2. 结合搜索结果和你的理解回答用户
 3. 如果知识库中没有相关信息，如实告知并基于你的知识尽力回答
-4. 引用知识库内容时，可以提及信息来源
+4. 引用知识库内容时，必须在相关语句后标注【参考资料X(来源文件名)】，X为结果编号，来源文件名为 search_results 中的 source 字段值。例如：【参考资料1(产品手册.pdf)】
+5. 如果搜索结果中包含 image_files（图片文件名列表），你必须在回答中用 markdown 图片语法输出图片：
+   ![参考资料X-图片说明](/api/knowledge/mineru-image/图片文件名)
+   其中图片文件名从 image_files 数组中取值
+6. **图片必须紧跟在引用了该参考资料的内容段落后方**，不要把所有图片堆在一起或放在回答末尾
+7. 每张图片只出现一次
+8. 图片的 alt 文本应包含来源标注，如：![参考资料1-产品规格图(产品手册.pdf)](/api/knowledge/mineru-image/abc.jpg)
 </knowledge_base>
 """
 

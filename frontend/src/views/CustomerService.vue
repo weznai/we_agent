@@ -7,7 +7,7 @@
           <span>新对话</span>
         </div>
         <div class="icon-action" :title="sidebarCollapsed ? '展开' : '收起'" @click="sidebarCollapsed = !sidebarCollapsed">
-          <el-icon :size="17">
+          <el-icon :size="14">
             <Fold v-if="!sidebarCollapsed" />
             <Expand v-else />
           </el-icon>
@@ -112,26 +112,62 @@
         <div v-for="(msg, i) in messages" :key="i" :class="['message', msg.role]">
           <div class="message-avatar">
             <div v-if="msg.role === 'user'" class="avatar-circle user-avatar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="8" r="4" stroke="white" stroke-width="2"/>
                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" stroke-width="2" stroke-linecap="round"/>
               </svg>
             </div>
             <div v-else class="avatar-circle ai-avatar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
                 <path d="M8 12h8M12 8v8" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
           </div>
           <div class="message-content">
+            <template v-if="msg.searchResults && msg.searchResults.length">
+              <div class="search-results-panel">
+                <div class="search-results-header" @click="msg._expanded = !msg._expanded">
+                  <span class="search-results-title">
+                    <svg :class="{ 'is-expanded': msg._expanded }" class="expand-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    <span>检索结果（{{ msg.searchResults.length }} 条）</span>
+                  </span>
+                </div>
+                <div v-show="msg._expanded" class="search-results-body">
+                  <div v-for="(r, ri) in msg.searchResults" :key="ri" class="search-result-card">
+                    <div class="result-header">
+                      <div class="result-meta">
+                        <span class="result-index">#{{ ri + 1 }}</span>
+                        <el-tag size="small" effect="plain" type="info">{{ r.source || '未知来源' }}</el-tag>
+                        <el-tag v-if="r.page_idx != null" size="small" type="info">P{{ r.page_idx + 1 }}</el-tag>
+                        <el-tag v-if="r.image_paths && r.image_paths.length" size="small" type="warning">
+                          <el-icon><Picture /></el-icon> 含图片
+                        </el-tag>
+                      </div>
+                      <div class="result-actions">
+                        <el-button size="small" plain @click="openChunkPreview(r)">查看原文</el-button>
+                        <div class="similarity-badge">{{ (r.score * 100).toFixed(0) }}%</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <div class="message-bubble" v-if="msg.content" v-html="renderMarkdown(msg.content)"></div>
-            <div class="message-bubble status-bubble" v-else-if="msg.status">
-              <span class="status-text">{{ msg.status }}</span>
-              <span class="dot"></span>
-              <span class="dot"></span>
-              <span class="dot"></span>
+            <div class="message-bubble status-bubble" v-else-if="msg.status || msg.loading">
+              <div class="status-spinner">
+                <el-icon :size="18" class="spin-icon-el"><Loading /></el-icon>
+              </div>
+              <div class="status-info">
+                <span class="status-text">{{ msg.status || 'AI 正在生成回答...' }}</span>
+                <div v-if="msg.searchQuery" class="search-query-preview">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  <span class="search-query-text">{{ msg.searchQuery }}</span>
+                </div>
+              </div>
             </div>
+
             <div class="message-actions" v-if="msg.role === 'assistant'">
               <span class="action-btn" @click="copyText(msg.content)" title="复制">
                 <el-icon><CopyDocument /></el-icon>
@@ -143,17 +179,18 @@
         <div v-if="isLoading" class="message assistant">
           <div class="message-avatar">
             <div class="avatar-circle ai-avatar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
                 <path d="M8 12h8M12 8v8" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
           </div>
           <div class="message-content">
-            <div class="message-bubble typing">
-              <span class="dot"></span>
-              <span class="dot"></span>
-              <span class="dot"></span>
+            <div class="message-bubble status-bubble">
+              <div class="status-spinner">
+                <el-icon :size="18" class="spin-icon-el"><Loading /></el-icon>
+              </div>
+              <span class="status-text">AI 正在思考...</span>
             </div>
           </div>
         </div>
@@ -174,14 +211,41 @@
           <el-button
             type="primary"
             class="send-btn"
-            :disabled="!inputText.trim() || isLoading"
+            :loading="isLoading || isStreaming"
+            :disabled="!inputText.trim() || isLoading || isStreaming"
             @click="sendMessage"
           >
-            <el-icon :size="18"><Promotion /></el-icon>
+            <template #icon>
+              <el-icon v-if="!(isLoading || isStreaming)" :size="18"><Promotion /></el-icon>
+            </template>
           </el-button>
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="chunkDialogVisible"
+      :title="chunkDialogTitle"
+      width="680px"
+      class="chunk-preview-dialog"
+      destroy-on-close
+    >
+      <div class="chunk-preview-body">
+        <div v-if="chunkPreviewData.images.length" class="chunk-preview-images">
+          <div v-for="(img, ii) in chunkPreviewData.images" :key="ii" class="chunk-img-item">
+            <el-image
+              :src="img.url"
+              fit="contain"
+              class="chunk-preview-img"
+              :preview-src-list="chunkPreviewData.images.map(i => i.url)"
+              :initial-index="ii"
+            />
+            <div v-if="img.label" class="chunk-img-label">{{ img.label }}</div>
+          </div>
+        </div>
+        <div v-if="chunkPreviewData.content" class="chunk-preview-text">{{ chunkPreviewData.content }}</div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -199,12 +263,16 @@ const messages = ref([])
 const sessions = ref([])
 const currentSession = ref('')
 const isLoading = ref(false)
+const isStreaming = ref(false)
 const sidebarCollapsed = ref(false)
 const selectedModelId = ref(localStorage.getItem('chat_selected_model_customer_service') ? Number(localStorage.getItem('chat_selected_model_customer_service')) : null)
 const selectedKnowledgeGroupId = ref(localStorage.getItem('chat_selected_knowledge_customer_service') ? Number(localStorage.getItem('chat_selected_knowledge_customer_service')) : null)
 const availableModels = ref([])
 const providers = ref([])
 const knowledgeGroups = ref([])
+const chunkDialogVisible = ref(false)
+const chunkDialogTitle = ref('')
+const chunkPreviewData = ref({ content: '', images: [] })
 
 watch(selectedModelId, (val) => {
   if (val) {
@@ -223,12 +291,52 @@ watch(selectedKnowledgeGroupId, (val) => {
 })
 
 function renderMarkdown(text) {
-  return marked(text || '')
+  if (!text) return ''
+  text = text.replace(/【参考资料(\d+)(?:[（(]([^）)]+)[）)])?】/g, (match, num, source) => {
+    const label = source ? `参考资料${num} - ${source}` : `参考资料${num}`
+    return `<span class="ref-citation" data-ref="${num}">${label}</span>`
+  })
+  let html = marked(text)
+  html = html.replace(/<img /g, '<img style="max-width:100%;max-height:300px;border-radius:8px;margin:8px 0" ')
+  return html
 }
 
 function copyText(text) {
   navigator.clipboard.writeText(text)
   ElMessage.success('已复制')
+}
+
+function toImgUrl(path) {
+  if (!path) return ''
+  const file = path.replace(/\\/g, '/').split('/').pop()
+  return `/api/knowledge/mineru-image/${file}`
+}
+
+function openChunkPreview(result) {
+  const parts = []
+  if (result.source) parts.push(result.source)
+  if (result.page_idx != null) parts.push(`第 ${result.page_idx + 1} 页`)
+  chunkDialogTitle.value = parts.join(' - ')
+
+  const images = []
+  if (result.content_path) {
+    const url = toImgUrl(result.content_path)
+    if (url) images.push({ url, label: '' })
+  }
+  for (const p of result.image_paths || []) {
+    if (p) {
+      const url = toImgUrl(p)
+      if (url && !images.some(i => i.url === url)) {
+        images.push({ url, label: '' })
+      }
+    }
+  }
+
+  chunkPreviewData.value = {
+    content: result.content || '',
+    images,
+  }
+  chunkDialogVisible.value = true
 }
 
 function getProviderName(providerId) {
@@ -275,7 +383,7 @@ async function switchSession(sessionId) {
 }
 
 async function sendMessage() {
-  if (!inputText.value.trim() || isLoading.value) return
+  if (!inputText.value.trim() || isLoading.value || isStreaming.value) return
 
   if (!currentSession.value) {
     await newSession()
@@ -313,9 +421,11 @@ async function sendMessage() {
       throw new Error(err.detail || '请求失败')
     }
 
-    const assistantMsg = { role: 'assistant', content: '', status: '' }
-    messages.value.push(assistantMsg)
     isLoading.value = false
+    isStreaming.value = true
+
+    const assistantMsg = { role: 'assistant', content: '', status: '', searchQuery: '', loading: true, searchResults: null, _expanded: false }
+    messages.value.push(assistantMsg)
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -334,15 +444,30 @@ async function sendMessage() {
           const data = JSON.parse(line.slice(6))
           if (data.error) {
             assistantMsg.content += `\n\n[错误] ${data.error}`
+            assistantMsg.loading = false
           } else if (data.done) {
             assistantMsg.status = ''
+            assistantMsg.searchQuery = ''
+            assistantMsg.loading = false
             await loadSessions()
+          } else if (data.search_results) {
+            assistantMsg.searchResults = data.search_results
+            assistantMsg.status = ''
+            assistantMsg.loading = true
+            await nextTick()
+            scrollToBottom()
           } else if (data.status) {
             assistantMsg.status = data.status
+            assistantMsg.loading = true
+            if (data.search_query) {
+              assistantMsg.searchQuery = data.search_query
+            }
             await nextTick()
             scrollToBottom()
           } else if (data.content) {
             assistantMsg.status = ''
+            assistantMsg.searchQuery = ''
+            assistantMsg.loading = false
             assistantMsg.content += data.content
           }
         }
@@ -351,10 +476,14 @@ async function sendMessage() {
       scrollToBottom()
     }
     assistantMsg.status = ''
+    assistantMsg.searchQuery = ''
+    assistantMsg.loading = false
   } catch (e) {
     isLoading.value = false
+    isStreaming.value = false
     messages.value.push({ role: 'assistant', content: e.message || '抱歉，发生了错误，请稍后重试。' })
   } finally {
+    isStreaming.value = false
     await nextTick()
     scrollToBottom()
   }
@@ -413,7 +542,6 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 14px;
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -452,7 +580,7 @@ onMounted(() => {
   justify-content: center;
   border-radius: 8px;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: #60a5fa;
   flex-shrink: 0;
   transition: var(--transition);
 
@@ -640,7 +768,7 @@ onMounted(() => {
     .message-bubble {
       background: #eef8f4;
       color: var(--text-primary);
-      border: 1px solid #d0e8df;
+      border: 1px solid #dceee6;
       border-radius: 20px 20px 4px 20px;
     }
   }
@@ -663,9 +791,9 @@ onMounted(() => {
 .message-avatar { flex-shrink: 0; }
 
 .avatar-circle {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -716,13 +844,30 @@ onMounted(() => {
 .message:hover .message-actions { opacity: 1; }
 
 .message-bubble {
-  padding: 14px 18px;
-  font-size: 15px;
+  padding: 5px 8px;
+  font-size: 14px;
   line-height: 1.75;
 
   :deep(p) { margin: 0 0 8px; &:last-child { margin: 0; } }
   :deep(ul), :deep(ol) { padding-left: 20px; margin: 4px 0; }
   :deep(li) { margin-bottom: 2px; }
+  :deep(.ref-citation) {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 500;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+    padding: 1px 8px;
+    border-radius: 4px;
+    margin: 0 2px;
+    vertical-align: middle;
+  }
+  :deep(img) {
+    display: block;
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 8px 0;
+  }
   :deep(code) {
     background: rgba(16, 185, 129, 0.08);
     padding: 2px 6px;
@@ -766,6 +911,168 @@ onMounted(() => {
   }
 }
 
+.ref-images-bar {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+  margin-top: 4px;
+
+  .ref-thumb {
+    height: 56px;
+    min-width: 56px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    &:hover { border-color: #10b981; }
+  }
+}
+
+.search-results-panel {
+  margin-top: 8px;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+
+  .search-results-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid #f0f3f8;
+
+    &:hover { background: #f8fafc; }
+
+    .search-results-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .expand-arrow {
+      transition: transform 0.2s;
+      &.is-expanded { transform: rotate(90deg); }
+    }
+  }
+
+  .search-results-body {
+    padding: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .search-result-card {
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #eef2f7;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+    transition: box-shadow 0.2s, transform 0.2s;
+
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    &:last-child { margin-bottom: 0; }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .result-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .result-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .result-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .similarity-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #10b981;
+      background: rgba(16, 185, 129, 0.08);
+      padding: 3px 10px;
+      border-radius: 10px;
+    }
+  }
+}
+
+.chunk-preview-body {
+  max-height: 65vh;
+  overflow-y: auto;
+
+  .chunk-preview-images {
+    margin-bottom: 16px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .chunk-img-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .chunk-preview-img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    border: 1px solid #eef2f7;
+    cursor: pointer;
+  }
+
+  .chunk-img-label {
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  .chunk-preview-text {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
 .message.user .message-bubble {
   :deep(pre) { background: #e4e9f0; }
   :deep(code) { background: rgba(16, 185, 129, 0.08); color: #059669; }
@@ -791,24 +1098,56 @@ onMounted(() => {
 .message-bubble.status-bubble {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 14px 22px;
   color: #6b7280;
   font-size: 14px;
 
-  .status-text {
-    white-space: nowrap;
+  .status-spinner {
+    flex-shrink: 0;
+    color: #10b981;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #10b981, #06b6d4);
-    animation: typing 1.4s ease-in-out infinite;
+  .spin-icon-el {
+    animation: spin 1s linear infinite;
+  }
 
-    &:nth-child(2) { animation-delay: 0.2s; }
-    &:nth-child(3) { animation-delay: 0.4s; }
+  .status-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .status-text {
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .search-query-preview {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #f0fdf4;
+    border-radius: 8px;
+    border: 1px solid #dcfce7;
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    .search-query-text {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.6;
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 }
 
@@ -817,11 +1156,16 @@ onMounted(() => {
   30% { transform: translateY(-8px); opacity: 1; }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 // ===== Input =====
 .chat-input-area {
   padding: 16px 24px 20px;
   background: var(--bg-card);
-  border-top: 1px solid var(--border-color);
+  border-top: 0.5px solid var(--border-color);
 }
 
 .input-container {
@@ -837,7 +1181,7 @@ onMounted(() => {
 
   :deep(.el-textarea__inner) {
     background: #f0f5ff !important;
-    border: 1px solid #dbe4f3 !important;
+    border: 0.5px solid #dbe4f3 !important;
     border-radius: 14px !important;
     padding: 13px 18px;
     color: var(--text-primary) !important;
@@ -874,5 +1218,21 @@ onMounted(() => {
     box-shadow: none !important;
     transform: none !important;
   }
+}
+</style>
+
+<style>
+.chunk-preview-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.chunk-preview-dialog .el-dialog__header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #f0f3f8;
+}
+
+.chunk-preview-dialog .el-dialog__body {
+  padding: 16px 20px 20px;
 }
 </style>

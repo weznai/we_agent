@@ -350,8 +350,11 @@
                   <el-tag v-if="r.page_idx != null" size="small" type="info">P{{ r.page_idx + 1 }}</el-tag>
                 </div>
                 <p class="rag-chunk-text">{{ r.content }}</p>
-                <div v-if="r.content_path" class="rag-chunk-image">
-                  <el-image :src="`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`" fit="contain" style="max-height: 200px" :preview-src-list="[`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`]" />
+                <div v-if="(r.image_paths && r.image_paths.length) || r.content_path" class="rag-chunk-image">
+                  <template v-if="r.image_paths && r.image_paths.length">
+                    <el-image v-for="img in r.image_paths" :key="img" :src="`/api/knowledge/mineru-image/${img.replace(/\\/g, '/').split('/').pop()}`" fit="contain" style="max-height: 200px; margin-right: 8px" :preview-src-list="r.image_paths.map(p => `/api/knowledge/mineru-image/${p.replace(/\\/g, '/').split('/').pop()}`)" />
+                  </template>
+                  <el-image v-else-if="r.content_path" :src="`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`" fit="contain" style="max-height: 200px" :preview-src-list="[`/api/knowledge/mineru-image/${r.content_path.replace(/\\/g, '/').split('/').pop()}`]" />
                 </div>
               </div>
             </div>

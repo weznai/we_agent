@@ -87,14 +87,7 @@ class EmbeddingService:
             return self._embed_via_api(texts)
 
         if self._use_sentence_transformers and self._model:
-            embeddings = self._model.encode(texts, normalize_embeddings=True)
-            result = [emb.tolist() for emb in embeddings]
-            elapsed = time.time() - start_time
-            logger.info(
-                f"[Embedding] Generated (local): count={len(texts)}, "
-                f"dim={self.dimension}, elapsed={elapsed:.2f}s"
-            )
-            return result
+            return self._embed_local_batch(texts)
 
         result = [self._hash_embed(t) for t in texts]
         elapsed = time.time() - start_time
@@ -103,6 +96,25 @@ class EmbeddingService:
             f"dim={self.dimension}, elapsed={elapsed:.2f}s"
         )
         return result
+
+    def _embed_local_batch(self, texts: List[str], batch_size: int = 8) -> List[List[float]]:
+        start_time = time.time()
+        all_results = []
+        total = len(texts)
+        for i in range(0, total, batch_size):
+            batch = texts[i : i + batch_size]
+            embeddings = self._model.encode(batch, normalize_embeddings=True)
+            all_results.extend([emb.tolist() for emb in embeddings])
+            logger.info(
+                f"[Embedding] Batch {i // batch_size + 1}/{(total + batch_size - 1) // batch_size}: "
+                f"encoded {len(batch)} texts"
+            )
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[Embedding] Generated (local): count={total}, "
+            f"dim={self.dimension}, elapsed={elapsed:.2f}s"
+        )
+        return all_results
 
     def embed_query(
         self, query: str, model_name: Optional[str] = None

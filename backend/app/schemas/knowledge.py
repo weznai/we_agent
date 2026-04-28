@@ -84,6 +84,7 @@ class KnowledgeSearchResult(BaseModel):
     page_idx: Optional[int] = None
     content_path: Optional[str] = None
     image_path: Optional[str] = None
+    image_paths: Optional[List[str]] = None
 
 
 class KnowledgeSettingsUpdate(BaseModel):

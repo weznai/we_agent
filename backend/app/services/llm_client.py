@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 SYSTEM_PROMPTS = {
     "chat": "You are a helpful, knowledgeable AI assistant. Respond in the same language the user uses. Be concise and accurate.",
-    "vision": "You are a helpful, knowledgeable AI assistant with vision capabilities. You can analyze and describe images. Respond in the same language the user uses. Be concise and accurate.",
+    "multimodal": "You are a helpful, knowledgeable AI assistant with vision capabilities. You can analyze and describe images. Respond in the same language the user uses. Be concise and accurate.",
     "translation": "You are a professional translator. Translate the given text accurately. Return only the translation result, nothing else.",
     "customer_service": "你是一位专业、友好的智能客服助手。请耐心、礼貌地回答用户的问题，提供准确有用的信息。如果无法回答，请诚实告知并建议用户联系人工客服。回复使用中文。",
     "smart_assistant": "你是一个全能的智能助手，能够帮助用户解答各种问题、分析数据、撰写文案、编程辅助、知识查询等。中文回复，专业友好简洁。",
@@ -94,12 +94,15 @@ async def get_llm_response(
             f"[LLM Call] Sending request to {provider.api_base}, model={model.name}, messages_count={len(messages)}"
         )
 
-        response = await client.chat.completions.create(
+        kwargs = dict(
             model=model.name,
             messages=messages,
-            max_tokens=model.max_tokens or 1048576,
             temperature=float(model.temperature) if model.temperature else 0.7,
         )
+        if model.max_tokens:
+            kwargs["max_tokens"] = model.max_tokens
+
+        response = await client.chat.completions.create(**kwargs)
 
         elapsed = time.time() - start_time
         content = response.choices[0].message.content
@@ -139,14 +142,19 @@ async def stream_llm_response(
             f"[LLM Stream] Sending streaming request to {provider.api_base}, model={model.name}, messages_count={len(messages)}"
         )
 
-        stream = await client.chat.completions.create(
+        kwargs = dict(
             model=model.name,
             messages=messages,
-            max_tokens=model.max_tokens or 1048576,
             temperature=float(model.temperature) if model.temperature else 0.7,
             stream=True,
         )
+        if model.max_tokens:
+            kwargs["max_tokens"] = model.max_tokens
+
+        stream = await client.chat.completions.create(**kwargs)
         async for chunk in stream:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta
             if delta.content:
                 chunk_count += 1

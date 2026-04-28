@@ -41,19 +41,19 @@
           </el-button>
         </div>
         <div class="table-wrapper glass-card">
-          <el-table :data="models" stripe>
-            <el-table-column prop="name" label="模型名称" min-width="150" />
+          <el-table :data="sortedModels" stripe :span-method="providerSpanMethod">
+            <el-table-column label="供应商" min-width="120" class-name="provider-cell">
+              <template #default="{ row }">
+                {{ getRowProviderName(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="name" label="模型ID" min-width="150" />
             <el-table-column prop="display_name" label="显示名称" min-width="120" />
             <el-table-column prop="model_type" label="类型" width="110">
               <template #default="{ row }">
                 <el-tag :type="modelTypeTag(row.model_type)" size="small">
                   {{ modelTypeLabel(row.model_type) }}
                 </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="provider_id" label="供应商" width="120">
-              <template #default="{ row }">
-                {{ row.model_path ? '本地' : getProviderName(row.provider_id) }}
               </template>
             </el-table-column>
             <el-table-column prop="model_path" label="模型路径" min-width="150">
@@ -81,10 +81,10 @@
             <el-table-column label="操作" width="140" fixed="right">
               <template #default="{ row }">
                 <el-button text size="small" @click="openModelDialog(row)">
-                  <el-icon><Edit /></el-icon>
+                  <el-icon :size="16"><Edit /></el-icon>
                 </el-button>
                 <el-button text size="small" type="danger" @click="deleteModel(row.id)">
-                  <el-icon><Delete /></el-icon>
+                  <el-icon :size="16"><Delete /></el-icon>
                 </el-button>
               </template>
             </el-table-column>
@@ -113,10 +113,10 @@
             <el-table-column label="操作" width="140" fixed="right">
               <template #default="{ row }">
                 <el-button text size="small" @click="openMappingDialog(row)">
-                  <el-icon><Edit /></el-icon>
+                  <el-icon :size="16"><Edit /></el-icon>
                 </el-button>
                 <el-button text size="small" type="danger" @click="deleteMapping(row.id)">
-                  <el-icon><Delete /></el-icon>
+                  <el-icon :size="16"><Delete /></el-icon>
                 </el-button>
               </template>
             </el-table-column>
@@ -167,7 +167,9 @@
         <el-form-item label="模型类型">
           <el-select v-model="modelForm.model_type" style="width: 100%">
             <el-option label="对话 (Chat)" value="chat" />
-            <el-option label="视觉多模态 (Vision)" value="vision" />
+            <el-option label="多模态 (Multimodal)" value="multimodal" />
+            <el-option label="生图 (Image Generation)" value="image_generation" />
+            <el-option label="生视频 (Video Generation)" value="video_generation" />
             <el-option label="嵌入 (Embedding)" value="embedding" />
             <el-option label="重排序 (Rerank)" value="rerank" />
           </el-select>
@@ -185,7 +187,7 @@
         <el-form-item label="描述">
           <el-input v-model="modelForm.description" type="textarea" :rows="2" />
         </el-form-item>
-        <template v-if="modelForm.model_type === 'chat' || modelForm.model_type === 'vision'">
+        <template v-if="modelForm.model_type === 'chat' || modelForm.model_type === 'multimodal'">
           <el-form-item label="最大Token">
             <el-input-number v-model="modelForm.max_tokens" :min="0" />
           </el-form-item>
@@ -229,7 +231,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
@@ -238,6 +240,14 @@ const activeTab = ref('providers')
 const providers = ref([])
 const models = ref([])
 const mappings = ref([])
+
+const sortedModels = computed(() => {
+  return [...models.value].sort((a, b) => {
+    const pa = a.model_path ? '本地' : getProviderName(a.provider_id)
+    const pb = b.model_path ? '本地' : getProviderName(b.provider_id)
+    return pa.localeCompare(pb, 'zh-CN')
+  })
+})
 
 const providerDialogVisible = ref(false)
 const modelDialogVisible = ref(false)
@@ -251,12 +261,30 @@ const providerForm = ref({ name: '', display_name: '', description: '', api_base
 const modelForm = ref({ provider_id: null, name: '', display_name: '', model_type: 'chat', description: '', max_tokens: 0, temperature: '0.7', model_path: '', embedding_dimension: 0 })
 const mappingForm = ref({ agent_type: 'chat', model_id: null, priority: 0 })
 
-const modelTypeLabel = (type) => ({ chat: '对话', vision: '视觉', embedding: '嵌入', rerank: '重排序' }[type] || type)
-const modelTypeTag = (type) => ({ chat: '', vision: 'danger', embedding: 'success', rerank: 'warning' }[type] || 'info')
+const modelTypeLabel = (type) => ({ chat: '对话', multimodal: '多模态', image_generation: '生图', video_generation: '生视频', embedding: '嵌入', rerank: '重排序' }[type] || type)
+const modelTypeTag = (type) => ({ chat: '', multimodal: 'danger', image_generation: 'primary', video_generation: 'primary', embedding: 'success', rerank: 'warning' }[type] || 'info')
 
 function getProviderName(id) {
   const p = providers.value.find(p => p.id === id)
   return p ? (p.display_name || p.name) : '-'
+}
+
+function getRowProviderName(row) {
+  return row.model_path ? '本地' : getProviderName(row.provider_id)
+}
+
+function providerSpanMethod({ column, rowIndex, columnIndex }) {
+  if (columnIndex !== 0) return { rowspan: 1, colspan: 1 }
+  const list = sortedModels.value
+  const currentName = getRowProviderName(list[rowIndex])
+  if (rowIndex > 0 && getRowProviderName(list[rowIndex - 1]) === currentName) {
+    return { rowspan: 0, colspan: 0 }
+  }
+  let count = 1
+  for (let i = rowIndex + 1; i < list.length && getRowProviderName(list[i]) === currentName; i++) {
+    count++
+  }
+  return { rowspan: count, colspan: 1 }
 }
 
 function getAgentLabel(type) {
@@ -444,6 +472,15 @@ onMounted(loadAll)
 .table-wrapper {
   padding: 0;
   overflow: hidden;
+
+  :deep(.provider-cell .cell) {
+    display: flex;
+    align-items: center;
+  }
+
+  :deep(.el-table .provider-cell) {
+    border-right: 1px solid var(--el-table-border-color);
+  }
 }
 
 .form-hint {

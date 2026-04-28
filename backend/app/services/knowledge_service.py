@@ -2,6 +2,7 @@ import os
 import json
 import time
 import uuid
+import shutil
 from typing import List, Optional, AsyncGenerator
 
 from sqlalchemy.orm import Session
@@ -39,6 +40,54 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
+
+
+def _parse_image_paths(val) -> Optional[List[str]]:
+    if val is None:
+        return None
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return None
+
+
+def _dedup_search_results(results: List[KnowledgeSearchResult]) -> List[KnowledgeSearchResult]:
+    deduped = []
+    seen: dict = {}
+    for r in results:
+        key = r.content
+        if key in seen:
+            existing = seen[key]
+            merged_images = list(set(
+                (existing.image_paths or [])
+                + ([r.content_path] if r.content_path else [])
+                + ([existing.content_path] if existing.content_path else [])
+                + (r.image_paths or [])
+            ))
+            existing.image_paths = merged_images or None
+            if merged_images:
+                existing.content_path = merged_images[0]
+            if r.score > existing.score:
+                existing.score = r.score
+                existing.chunk_id = r.chunk_id
+                existing.chunk_index = r.chunk_index
+        else:
+            all_images = list(set(
+                (r.image_paths or [])
+                + ([r.content_path] if r.content_path else [])
+            ))
+            r.image_paths = all_images or None
+            if all_images:
+                r.content_path = all_images[0]
+            seen[key] = r
+            deduped.append(r)
+    return deduped
 
 _embedding_service: Optional[EmbeddingService] = None
 _rerank_service: Optional[RerankService] = None
@@ -441,7 +490,7 @@ def upload_file(
         file_path=file_path,
         file_type=ext,
         file_size=file_size,
-        content=content_text,
+        content=content_text[:200] if len(content_text) > 200 else content_text,
     )
     if parse_method:
         item.parse_method = parse_method
@@ -462,6 +511,7 @@ def upload_file(
                 item, db,
                 mineru_content_list=mineru_content_list,
                 mineru_output_dir=mineru_output_dir,
+                full_content=content_text,
             )
             db.refresh(item)
         except Exception as e:
@@ -527,7 +577,17 @@ def delete_file(user_id: int, file_id: int, db: Session):
         logger.warning(f"[Knowledge] VectorStore delete failed: {e}")
 
     if item.file_path and os.path.exists(item.file_path):
-        os.remove(item.file_path)
+        try:
+            os.remove(item.file_path)
+        except Exception as e:
+            logger.warning(f"[Knowledge] Failed to delete file: {item.file_path}, {e}")
+
+    if item.mineru_output_dir and os.path.isdir(item.mineru_output_dir):
+        try:
+            shutil.rmtree(item.mineru_output_dir)
+        except Exception as e:
+            logger.warning(f"[Knowledge] Failed to delete mineru output dir: {item.mineru_output_dir}, {e}")
+
     db.delete(item)
     db.commit()
     logger.info(
@@ -555,44 +615,45 @@ def reindex_file(user_id: int, file_id: int, db: Session):
     except Exception as e:
         logger.warning(f"[Knowledge] VectorStore delete failed: {e}")
 
+    if not item.file_path or not os.path.exists(item.file_path):
+        raise HTTPException(status_code=400, detail="原文件不存在，无法重新索引")
+
     mineru_content_list = None
     mineru_output_dir = item.mineru_output_dir
+    content_text = ""
 
     ext_lower = (item.file_type or "").lower()
-    if ext_lower == "pdf" and item.file_path and os.path.exists(item.file_path):
+    if ext_lower in ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"):
         try:
             content_text, mineru_content_list, mineru_output_dir = _parse_with_mineru(
                 item.file_path, item.name, item.file_type
             )
-            item.content = content_text
             item.parse_method = "mineru"
             item.mineru_output_dir = mineru_output_dir
-            db.commit()
             logger.info(f"[Knowledge] Re-parsed with MineRU: content_length={len(content_text)}")
         except Exception as e:
-            logger.warning(f"[Knowledge] MineRU re-parse failed: {e}, using existing content")
+            logger.warning(f"[Knowledge] MineRU re-parse failed: {e}")
 
-    if not item.content and item.file_path and os.path.exists(item.file_path):
-        logger.info(f"[Knowledge] Content empty, re-extracting from file: {item.file_path}")
+    if not content_text:
         try:
             with open(item.file_path, "rb") as f:
                 content_bytes = f.read()
-            item.content = _extract_text(content_bytes, item.file_type)
-            if item.content:
-                logger.info(f"[Knowledge] Re-extracted text: length={len(item.content)}")
-                db.commit()
-            else:
-                logger.warning(f"[Knowledge] Re-extract produced empty text: file_id={file_id}")
+            content_text = _extract_text(content_bytes, item.file_type)
+            logger.info(f"[Knowledge] Re-extracted text: length={len(content_text)}")
         except Exception as e:
             logger.error(f"[Knowledge] Re-extract failed: file_id={file_id}, error={e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"文本提取失败：{e}")
 
-    if item.content or mineru_content_list:
+    item.content = content_text[:200] if len(content_text) > 200 else content_text
+    db.commit()
+
+    if content_text or mineru_content_list:
         try:
             index_knowledge(
                 item, db,
                 mineru_content_list=mineru_content_list,
                 mineru_output_dir=mineru_output_dir,
+                full_content=content_text,
             )
             db.refresh(item)
         except Exception as e:
@@ -619,20 +680,20 @@ def get_file_chunks(user_id: int, file_id: int, db: Session) -> FileChunksRespon
     if not item:
         raise HTTPException(status_code=404, detail="File not found")
 
-    chunks = (
-        db.query(KnowledgeChunk)
-        .filter(KnowledgeChunk.knowledge_id == item.id)
-        .order_by(KnowledgeChunk.chunk_index)
-        .all()
-    )
+    try:
+        vs = _get_vector_store()
+        raw_chunks = vs.get_chunks_by_knowledge_id(item.id)
+    except Exception as e:
+        logger.warning(f"[Knowledge] ChromaDB get_chunks failed: {e}")
+        raw_chunks = []
 
     chunk_infos = [
         ChunkInfo(
-            chunk_index=c.chunk_index,
-            content=c.content,
-            char_count=len(c.content),
+            chunk_index=c["chunk_index"],
+            content=c["content"],
+            char_count=c["char_count"],
         )
-        for c in chunks
+        for c in raw_chunks
     ]
 
     return FileChunksResponse(
@@ -668,11 +729,11 @@ def search_knowledge(
             query_embedding=query_vec,
             user_id=user_id,
             group_id=group_id,
-            top_k=top_k,
+            top_k=top_k * 3,
         )
     except Exception as e:
-        logger.warning(f"[Knowledge] VectorStore search failed, falling back: {e}")
-        return _search_fallback(user_id, query_vec, group_id, top_k, ks, db)
+        logger.error(f"[Knowledge] VectorStore search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"搜索失败：{e}")
 
     if not results:
         logger.info("[Knowledge] Search: no results found")
@@ -699,8 +760,11 @@ def search_knowledge(
                 page_idx=r["metadata"].get("page_idx"),
                 content_path=r["metadata"].get("content_path"),
                 image_path=r["metadata"].get("image_path"),
+                image_paths=_parse_image_paths(r["metadata"].get("image_paths")),
             )
         )
+
+    scored = _dedup_search_results(scored)
 
     if ks.enable_rerank:
         rerank_svc = get_rerank_service(db, model_id=ks.rerank_model_id)
@@ -723,43 +787,6 @@ def search_knowledge(
     logger.info(
         f"[Knowledge] Search complete: results={len(scored[:top_k])}, top_score={scored[0].score if scored else 0:.4f}, elapsed={elapsed:.2f}s"
     )
-    return scored[:top_k]
-
-
-def _search_fallback(user_id, query_vec, group_id, top_k, ks, db):
-    q = (
-        db.query(KnowledgeChunk)
-        .join(Knowledge, KnowledgeChunk.knowledge_id == Knowledge.id)
-        .filter(Knowledge.user_id == user_id)
-    )
-    if group_id is not None:
-        q = q.filter(KnowledgeChunk.group_id == group_id)
-    chunks = q.all()
-
-    if not chunks:
-        return []
-
-    scored = []
-    for chunk in chunks:
-        if not chunk.embedding:
-            continue
-        vec = EmbeddingService.deserialize_embedding(chunk.embedding)
-        score = EmbeddingService.cosine_similarity(query_vec, vec)
-        knowledge_name = (
-            db.query(Knowledge).filter(Knowledge.id == chunk.knowledge_id).first()
-        )
-        scored.append(
-            KnowledgeSearchResult(
-                chunk_id=str(chunk.id),
-                knowledge_id=chunk.knowledge_id,
-                knowledge_name=knowledge_name.name if knowledge_name else "",
-                content=chunk.content,
-                score=score,
-                chunk_index=chunk.chunk_index,
-            )
-        )
-
-    scored.sort(key=lambda x: x.score, reverse=True)
     return scored[:top_k]
 
 
@@ -902,10 +929,11 @@ def index_knowledge(
     db: Session,
     mineru_content_list: Optional[List[dict]] = None,
     mineru_output_dir: str = "",
+    full_content: str = "",
 ):
     start_time = time.time()
     logger.info(
-        f"[Knowledge] Indexing: file_id={item.id}, content_length={len(item.content)}, "
+        f"[Knowledge] Indexing: file_id={item.id}, content_length={len(full_content)}, "
         f"has_mineru={mineru_content_list is not None}"
     )
 
@@ -943,14 +971,14 @@ def index_knowledge(
 
     if not chunks_info:
         chunks_info = split_text_to_chunks(
-            item.content,
+            full_content,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             method=chunk_method,
         )
 
     if not chunks_info:
-        logger.warning(f"[Knowledge] No chunks generated: file_id={item.id}, content_length={len(item.content)}, method={chunk_method}, chunk_size={chunk_size}")
+        logger.warning(f"[Knowledge] No chunks generated: file_id={item.id}, content_length={len(full_content)}, method={chunk_method}, chunk_size={chunk_size}")
         return
 
     logger.info(f"[Knowledge] <<< Phase 2 DONE: Chunks generated: file_id={item.id}, count={len(chunks_info)}, elapsed={time.time() - start_time:.2f}s")
@@ -960,12 +988,7 @@ def index_knowledge(
 
     texts_to_embed = []
     for c in chunks_info:
-        meta = c.get("metadata", {})
-        emb_type = meta.get("embedding_type", "text")
-        if emb_type == "text" or not meta.get("content_path"):
-            texts_to_embed.append(c.get("content", ""))
-        else:
-            texts_to_embed.append(c.get("content", ""))
+        texts_to_embed.append(c.get("content", ""))
 
     embeddings = emb_svc.embed_texts(texts_to_embed)
     logger.info(f"[Knowledge] <<< Phase 3 DONE: embeddings count={len(embeddings)}, elapsed={time.time() - _t_embed:.2f}s")
@@ -981,15 +1004,12 @@ def index_knowledge(
         chunk = KnowledgeFactory.create_chunk(
             knowledge_id=item.id,
             chunk_index=info.get("chunk_index", i),
-            content=info.get("content", ""),
-            embedding="",
             group_id=item.group_id,
         )
         chunk.chunk_type = info.get("chunk_type", "text")
         chunk.page_idx = info.get("page_idx")
         chunk.content_path = info.get("content_path", "")
         chunk.image_path = info.get("image_path", "")
-        chunk.metadata_json = json.dumps(info.get("metadata", {}), ensure_ascii=False)
         db.add(chunk)
 
         chunk_id = f"{item.id}_{info.get('chunk_index', i)}"
@@ -1007,6 +1027,9 @@ def index_knowledge(
             meta["content_path"] = info["content_path"]
         if info.get("image_path"):
             meta["image_path"] = info["image_path"]
+        img_paths_list = info.get("image_paths", [])
+        if img_paths_list:
+            meta["image_paths"] = json.dumps(img_paths_list, ensure_ascii=False)
         extra_meta = info.get("metadata", {})
         if extra_meta:
             meta.update(extra_meta)
@@ -1030,6 +1053,8 @@ def index_knowledge(
 
     item.chunk_count = len(chunks_info)
     item.indexed = True
+    if len(item.content) > 200:
+        item.content = item.content[:200]
     db.commit()
 
     elapsed = time.time() - start_time
@@ -1046,6 +1071,9 @@ def search_for_agent(user_id: int, query: str, group_id: Optional[int], top_k: i
             "source": r.knowledge_name,
             "score": round(r.score, 4),
             "chunk_index": r.chunk_index,
+            "page_idx": r.page_idx,
+            "content_path": r.content_path,
+            "image_paths": r.image_paths,
         }
         for r in results
     ]
@@ -1075,8 +1103,11 @@ async def rag_answer_stream(
         if r.page_idx is not None:
             ref_item += f", 第{r.page_idx + 1}页"
         ref_item += f"\n{r.content}"
-        if r.content_path and r.content_path.startswith("/"):
-            ref_item += f"\n[关联图片: {r.content_path}]"
+
+        img_refs = r.image_paths or ([r.content_path] if r.content_path and r.content_path.startswith("/") else [])
+        if img_refs:
+            ref_item += "\n" + "\n".join(f"[关联图片: {p}]" for p in img_refs if p)
+
         ref_parts.append(ref_item)
 
     references = "\n\n".join(ref_parts)
@@ -1105,7 +1136,7 @@ async def rag_answer_stream(
         stream = await client.chat.completions.create(
             model=model.name,
             messages=messages,
-            max_tokens=model.max_tokens or 4096,
+            max_tokens=model.max_tokens if model.max_tokens else 4096,
             temperature=float(model.temperature) if model.temperature else 0.7,
             stream=True,
         )

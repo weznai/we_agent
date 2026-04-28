@@ -77,7 +77,7 @@ class ModelFactory:
             display_name=kwargs.get("display_name", ""),
             model_type=kwargs.get("model_type", "chat"),
             description=kwargs.get("description", ""),
-            max_tokens=kwargs.get("max_tokens", 1048576),
+            max_tokens=kwargs.get("max_tokens"),
             temperature=kwargs.get("temperature", "0.7"),
             embedding_dimension=kwargs.get("embedding_dimension", 0),
             model_path=kwargs.get("model_path", ""),
@@ -141,16 +141,12 @@ class KnowledgeFactory:
     def create_chunk(
         knowledge_id: int,
         chunk_index: int,
-        content: str,
-        embedding: str,
         group_id: Optional[int] = None,
     ) -> KnowledgeChunk:
         return KnowledgeChunk(
             knowledge_id=knowledge_id,
             group_id=group_id,
             chunk_index=chunk_index,
-            content=content,
-            embedding=embedding,
         )
 
 

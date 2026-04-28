@@ -2,26 +2,29 @@ import time
 from typing import Optional
 
 from ..base import make_agent, stream_agent_response
-from .skills import ALL_TOOLS, create_knowledge_search_tool
+from .skills import create_knowledge_search_tool
 from .prompt import get_system_prompt
+from ...tools import get_tools
 from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+AGENT_TYPE = "customer_service"
 
 
 def create_agent(db, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
     logger.info(f"Creating order_sales agent: model_id={model_id}, user_id={user_id}, knowledge_group_id={knowledge_group_id}")
 
-    tools = list(ALL_TOOLS)
+    tools = get_tools(AGENT_TYPE)
     if user_id is not None:
         try:
-            tools.append(create_knowledge_search_tool(db, user_id, knowledge_group_id))
+            tools.append(create_knowledge_search_tool(user_id, knowledge_group_id))
             logger.info("Knowledge search tool added to agent")
         except Exception as e:
             logger.warning(f"Failed to add knowledge search tool: {e}")
 
-    prompt = get_system_prompt(with_knowledge=len(tools) > len(ALL_TOOLS))
-    return make_agent(db, tools, prompt, model_id, agent_type="customer_service")
+    prompt = get_system_prompt(with_knowledge=user_id is not None)
+    return make_agent(db, tools, prompt, model_id, agent_type=AGENT_TYPE)
 
 
 async def stream_response(db, session_id: str, user_content: str, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):

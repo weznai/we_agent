@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     ORDER_API_KEY: str = ""
     CHROMADB_PATH: str = "./data/chromadb"
     CHROMADB_COLLECTION: str = "knowledge_chunks"
+    IMAGE_GEN_PROVIDER: str = "gitee"
+    IMAGE_GEN_MODEL: str = "Kolors"
+    IMAGE_GEN_API_KEY: str = ""
+    IMAGE_GEN_OUTPUT_DIR: str = ""
 
 
 @lru_cache()

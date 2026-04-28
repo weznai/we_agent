@@ -130,14 +130,19 @@ def _group_content_with_context(content_list: List[Dict], window: int = 3) -> Li
     anchor_groups = []
     for i, item in enumerate(content_list):
         if item.get("type") in ("table", "image", "equation"):
+            anchor_page = item.get("page_idx")
             group_indices = {i}
             for j in range(i - 1, max(i - window, -1), -1):
-                if content_list[j].get("type") == "text" and not claimed[j]:
+                if (content_list[j].get("type") == "text"
+                        and not claimed[j]
+                        and content_list[j].get("page_idx") == anchor_page):
                     group_indices.add(j)
                 else:
                     break
             for j in range(i + 1, min(i + window + 1, len(content_list))):
-                if content_list[j].get("type") == "text" and not claimed[j]:
+                if (content_list[j].get("type") == "text"
+                        and not claimed[j]
+                        and content_list[j].get("page_idx") == anchor_page):
                     group_indices.add(j)
                 else:
                     break
@@ -147,7 +152,12 @@ def _group_content_with_context(content_list: List[Dict], window: int = 3) -> Li
         merged = [anchor_groups[0]]
         for ag in anchor_groups[1:]:
             if ag[0] <= merged[-1][-1] + 1:
-                merged[-1] = sorted(set(merged[-1]) | set(ag))
+                candidate = sorted(set(merged[-1]) | set(ag))
+                pages = {content_list[idx].get("page_idx") for idx in candidate}
+                if len(pages) <= 1:
+                    merged[-1] = candidate
+                else:
+                    merged.append(ag)
             else:
                 merged.append(ag)
         anchor_groups = merged
@@ -290,35 +300,23 @@ def _chunk_image_group(
             content_parts.append(f"[图片内容: {ocr_text}]")
 
         full_img_path = _resolve_img_path(output_dir, img_path)
+        url_path = _to_url_path(full_img_path)
+        img_content = "\n".join(content_parts) if content_parts else f"[图片: {img_path}]"
 
         chunks.append({
             "chunk_type": "image",
-            "content": "\n".join(content_parts) if content_parts else f"[图片: {img_path}]",
+            "content": (f"[图片标题: {caption}]\n" if caption else "") + img_content,
             "page_idx": item.get("page_idx"),
-            "content_path": _to_url_path(full_img_path),
+            "content_path": url_path,
             "image_path": img_path,
+            "image_paths": [url_path] if url_path else [],
             "metadata": {
-                "embedding_type": "visual",
+                "embedding_type": "text",
                 "image_caption": caption,
                 "has_caption": bool(caption),
-                "chunk_strategy": "image_visual",
+                "chunk_strategy": "image",
             },
         })
-
-        if caption:
-            chunks.append({
-                "chunk_type": "image",
-                "content": caption,
-                "page_idx": item.get("page_idx"),
-                "content_path": _to_url_path(full_img_path),
-                "image_path": img_path,
-                "metadata": {
-                    "embedding_type": "text",
-                    "image_caption": caption,
-                    "has_caption": True,
-                    "chunk_strategy": "image_caption",
-                },
-            })
 
     return chunks
 
@@ -348,35 +346,25 @@ def _chunk_table_group(
 
         content = "\n".join(content_parts)
         full_img_path = None
+        image_paths_list = []
         if img_path:
             full_img_path = _resolve_img_path(output_dir, img_path)
-
-        if img_path:
-            chunks.append({
-                "chunk_type": "table",
-                "content": content,
-                "page_idx": item.get("page_idx"),
-                "content_path": _to_url_path(full_img_path),
-                "image_path": img_path,
-                "metadata": {
-                    "embedding_type": "visual",
-                    "table_caption": "; ".join(caption) if caption else "",
-                    "table_plain_text": table_plain_text,
-                    "chunk_strategy": "table_visual",
-                },
-            })
+            url_path = _to_url_path(full_img_path)
+            if url_path:
+                image_paths_list.append(url_path)
 
         chunks.append({
             "chunk_type": "table",
             "content": content,
             "page_idx": item.get("page_idx"),
-            "content_path": _to_url_path(full_img_path),
+            "content_path": image_paths_list[0] if image_paths_list else None,
             "image_path": img_path,
+            "image_paths": image_paths_list,
             "metadata": {
                 "embedding_type": "text",
                 "table_caption": "; ".join(caption) if caption else "",
                 "table_plain_text": table_plain_text,
-                "chunk_strategy": "table_text",
+                "chunk_strategy": "table",
             },
         })
 
@@ -459,37 +447,33 @@ def _chunk_mixed_group(
     page_idx = _get_page_idx(mixed_group)
 
     all_visual = []
+    all_image_paths = []
     for img_path, full_path in table_image_paths:
-        all_visual.append(("table", img_path, full_path))
+        url = _to_url_path(full_path)
+        all_visual.append(("table", img_path, full_path, url))
+        if url:
+            all_image_paths.append(url)
     for img_path, full_path in image_paths_in_group:
-        all_visual.append(("image", img_path, full_path))
+        url = _to_url_path(full_path)
+        all_visual.append(("image", img_path, full_path, url))
+        if url:
+            all_image_paths.append(url)
 
     chunks.append({
         "chunk_type": "mixed",
         "content": full_content,
         "page_idx": page_idx,
-        "content_path": _to_url_path(all_visual[0][2]) if all_visual else None,
+        "content_path": all_image_paths[0] if all_image_paths else None,
+        "image_path": all_visual[0][1] if all_visual else None,
+        "image_paths": all_image_paths,
         "metadata": {
             "embedding_type": "text",
             "has_table": bool(table_image_paths),
             "has_image": bool(image_paths_in_group),
-            "chunk_strategy": "mixed_text",
+            "visual_count": len(all_visual),
+            "chunk_strategy": "mixed",
         },
     })
-
-    for source_type, img_path, full_path in all_visual:
-        chunks.append({
-            "chunk_type": "mixed",
-            "content": full_content,
-            "page_idx": page_idx,
-            "content_path": _to_url_path(full_path),
-            "image_path": img_path,
-            "metadata": {
-                "embedding_type": "visual",
-                "source_element_type": source_type,
-                "chunk_strategy": "mixed_visual",
-            },
-        })
 
     return chunks
 

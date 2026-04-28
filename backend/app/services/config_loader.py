@@ -136,7 +136,7 @@ def _sync_models(
                 display_name=cfg.get("display_name", ""),
                 model_type=cfg.get("model_type", defaults.get("model_type", "chat")),
                 description=cfg.get("description", ""),
-                max_tokens=cfg.get("max_tokens", defaults.get("max_tokens", 1048576)),
+                max_tokens=cfg.get("max_tokens", defaults.get("max_tokens")),
                 temperature=str(cfg.get("temperature", defaults.get("temperature", "0.7"))),
                 embedding_dimension=cfg.get("embedding_dimension", 0),
                 model_path=cfg.get("model_path", ""),

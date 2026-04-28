@@ -414,9 +414,9 @@ async function handleCommand(cmd) {
 }
 
 .collapse-btn {
-  font-size: 18px;
+  font-size: 24px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: #60a5fa;
   transition: all 0.2s ease;
   padding: 6px;
   border-radius: 6px;

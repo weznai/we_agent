@@ -8,7 +8,7 @@ from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-CHAT_LIKE_TYPES = {"chat", "vision"}
+CHAT_LIKE_TYPES = {"chat", "multimodal"}
 
 
 def _is_chat_like(model: Model) -> bool:

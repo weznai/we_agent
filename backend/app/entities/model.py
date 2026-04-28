@@ -17,7 +17,7 @@ class Model(Base):
     display_name = Column(String(100), default="")
     model_type = Column(String(50), default="chat")
     description = Column(Text, default="")
-    max_tokens = Column(Integer, default=1048576)
+    max_tokens = Column(Integer, default=None, nullable=True)
     temperature = Column(String(10), default="0.7")
     embedding_dimension = Column(Integer, default=0)
     model_path = Column(String(500), default="")

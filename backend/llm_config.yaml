@@ -14,7 +14,6 @@
 
 # --- Global defaults (applied to every provider/model unless overridden) ---
 defaults:
-  max_tokens: 104857600
   temperature: "0.7"
   is_active: true
 
@@ -78,21 +77,21 @@ models:
     provider: openai
     display_name: GPT-4o Mini
 
-  # --- Vision models ---
+  # --- Multimodal models ---
   - name: deepseek-vl-chat
     provider: deepseek
     display_name: DeepSeek VL Chat
-    model_type: vision
+    model_type: multimodal
 
   # - name: gpt-4o
   #   provider: openai
   #   display_name: GPT-4o Vision
-  #   model_type: vision
+  #   model_type: multimodal
 
   # - name: qwen-vl-plus
   #   provider: dashscope
   #   display_name: Qwen VL Plus
-  #   model_type: vision
+  #   model_type: multimodal
 
   - name: moonshot-v1-8k
     provider: moonshot

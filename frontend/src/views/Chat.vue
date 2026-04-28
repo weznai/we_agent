@@ -7,7 +7,7 @@
           <span>新对话</span>
         </div>
         <div class="icon-action" :title="sidebarCollapsed ? '展开' : '收起'" @click="sidebarCollapsed = !sidebarCollapsed">
-          <el-icon :size="17">
+          <el-icon :size="14">
             <Fold v-if="!sidebarCollapsed" />
             <Expand v-else />
           </el-icon>
@@ -98,13 +98,13 @@
         <div v-for="(msg, i) in messages" :key="i" :class="['message', msg.role]">
           <div class="message-avatar">
             <div v-if="msg.role === 'user'" class="avatar-circle user-avatar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="8" r="4" stroke="white" stroke-width="2"/>
                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" stroke-width="2" stroke-linecap="round"/>
               </svg>
             </div>
             <div v-else class="avatar-circle ai-avatar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
                 <circle cx="9" cy="10" r="1.5" fill="white"/>
                 <circle cx="15" cy="10" r="1.5" fill="white"/>
@@ -131,7 +131,7 @@
         <div v-if="isLoading" class="message assistant">
           <div class="message-avatar">
             <div class="avatar-circle ai-avatar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="18" height="18" rx="5" stroke="white" stroke-width="1.8" fill="none"/>
                 <circle cx="9" cy="10" r="1.5" fill="white"/>
                 <circle cx="15" cy="10" r="1.5" fill="white"/>
@@ -386,7 +386,6 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 14px;
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -427,7 +426,7 @@ onMounted(() => {
   justify-content: center;
   border-radius: 8px;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: #60a5fa;
   flex-shrink: 0;
   transition: var(--transition);
 
@@ -619,7 +618,7 @@ onMounted(() => {
     .message-bubble {
       background: #eef3fd;
       color: var(--text-primary);
-      border: 1px solid #d4dff2;
+      border: 1px solid #e4eaf4;
       border-radius: 20px 20px 4px 20px;
     }
   }
@@ -642,9 +641,9 @@ onMounted(() => {
 .message-avatar { flex-shrink: 0; }
 
 .avatar-circle {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -695,8 +694,8 @@ onMounted(() => {
 .message:hover .message-actions { opacity: 1; }
 
 .message-bubble {
-  padding: 14px 18px;
-  font-size: 15px;
+  padding: 5px 8px;
+  font-size: 14px;
   line-height: 1.75;
 
   :deep(p) { margin: 0 0 8px; &:last-child { margin: 0; } }
@@ -800,7 +799,7 @@ onMounted(() => {
 .chat-input-area {
   padding: 16px 24px 20px;
   background: var(--bg-card);
-  border-top: 1px solid var(--border-color);
+  border-top: 0.5px solid var(--border-color);
 }
 
 .input-container {
@@ -816,7 +815,7 @@ onMounted(() => {
 
   :deep(.el-textarea__inner) {
     background: #f0f5ff !important;
-    border: 1px solid #dbe4f3 !important;
+    border: 0.5px solid #dbe4f3 !important;
     border-radius: 14px !important;
     padding: 13px 18px;
     color: var(--text-primary) !important;

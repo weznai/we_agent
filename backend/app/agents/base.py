@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Optional, Any, cast
 from collections.abc import Mapping, Iterator
@@ -60,16 +61,18 @@ _memory_store = MemorySaver()
 def build_llm(db, model_id: Optional[int] = None, agent_type: str = "chat"):
     model, provider = resolve_model_for_agent(db, model_id, agent_type)
     logger.info(
-        f"Building LLM: model={model.name}, temperature={model.temperature}, max_tokens={model.max_tokens or 1048576}"
+        f"Building LLM: model={model.name}, temperature={model.temperature}, max_tokens={model.max_tokens}"
     )
-    return ChatOpenAI(
+    kwargs = dict(
         model=model.name,
         openai_api_base=provider.api_base,
         openai_api_key=provider.api_key,
         temperature=float(model.temperature) if model.temperature else 0.7,
-        max_tokens=model.max_tokens or 1048576,
         streaming=True,
     )
+    if model.max_tokens:
+        kwargs["max_tokens"] = model.max_tokens
+    return ChatOpenAI(**kwargs)
 
 
 def _sanitize_messages(messages):
@@ -197,10 +200,9 @@ async def stream_agent_response(agent, session_id: str, user_content: str):
     stream_chunks = 0
     start_time = time.time()
 
-    TOOL_STATUS_MAP = {
-        "knowledge_search": "正在搜索知识库...",
-        "api_call": "正在查询订单信息...",
-    }
+    from ..tools import get_status_map
+    TOOL_STATUS_MAP = get_status_map()
+    TOOL_STATUS_MAP["knowledge_search"] = "正在搜索知识库..."
 
     async for event in agent.astream_events(
         {"messages": [HumanMessage(content=user_content)]},
@@ -222,12 +224,24 @@ async def stream_agent_response(agent, session_id: str, user_content: str):
             logger.info(
                 f"[Agent Stream] Tool #{tool_calls} starting: name={tool_name}, input={str(tool_input)[:500]}"
             )
-            yield ("status", status_msg)
+            status_data = {"status": status_msg}
+            if tool_name == "knowledge_search" and tool_input.get("query"):
+                status_data["search_query"] = tool_input["query"]
+            yield ("status", status_data)
         elif kind == "on_tool_end":
             tool_output = event["data"].get("output", "")
+            tool_name = event.get("name", "")
+            output_str = tool_output.content if hasattr(tool_output, "content") else str(tool_output)
             logger.info(
-                f"[Agent Stream] Tool completed: name={event.get('name', '')}, output_length={len(str(tool_output))}, output_preview={str(tool_output)[:300]}"
+                f"[Agent Stream] Tool completed: name={tool_name}, output_length={len(output_str)}, output_preview={output_str[:300]}"
             )
+            if tool_name == "knowledge_search" and output_str:
+                try:
+                    parsed = json.loads(output_str)
+                    if parsed.get("results"):
+                        yield ("search_results", parsed["results"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
     elapsed = time.time() - start_time
     logger.info(

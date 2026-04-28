@@ -59,8 +59,11 @@
         <el-form-item label="模型类型">
           <el-select v-model="formData.model_type" style="width: 100%">
             <el-option label="对话" value="chat" />
-            <el-option label="翻译" value="translation" />
+            <el-option label="多模态" value="multimodal" />
+            <el-option label="生图" value="image_generation" />
+            <el-option label="生视频" value="video_generation" />
             <el-option label="嵌入" value="embedding" />
+            <el-option label="重排序" value="rerank" />
           </el-select>
         </el-form-item>
         <el-form-item label="描述">

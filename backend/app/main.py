@@ -85,8 +85,6 @@ if 'knowledge_chunks' in _tbl_inspect.get_table_names():
         _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN content_path VARCHAR(500) DEFAULT ''")
     if 'image_path' not in _chunk_col_names:
         _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN image_path VARCHAR(500) DEFAULT ''")
-    if 'metadata_json' not in _chunk_col_names:
-        _new_chunk_cols.append("ALTER TABLE knowledge_chunks ADD COLUMN metadata_json TEXT")
     if _new_chunk_cols:
         _conn = engine.raw_connection()
         try:
@@ -97,6 +95,23 @@ if 'knowledge_chunks' in _tbl_inspect.get_table_names():
             logger.info(f"Migrated knowledge_chunks: added {len(_new_chunk_cols)} columns")
         except Exception as e:
             logger.warning(f"Migration skipped (knowledge_chunks): {e}")
+        finally:
+            _conn.close()
+
+    _drop_chunk_cols = []
+    for _col in ['content', 'embedding', 'metadata_json']:
+        if _col in _chunk_col_names:
+            _drop_chunk_cols.append(f"ALTER TABLE knowledge_chunks DROP COLUMN {_col}")
+    if _drop_chunk_cols:
+        _conn = engine.raw_connection()
+        try:
+            _cur = _conn.cursor()
+            for sql in _drop_chunk_cols:
+                _cur.execute(sql)
+            _conn.commit()
+            logger.info(f"Migrated knowledge_chunks: dropped {len(_drop_chunk_cols)} redundant columns")
+        except Exception as e:
+            logger.warning(f"Migration skipped (knowledge_chunks drop): {e}")
         finally:
             _conn.close()
 
@@ -117,6 +132,20 @@ if 'knowledge_bases' in _tbl_inspect.get_table_names():
             logger.info(f"Migrated knowledge_bases: added {len(_new_kb_cols)} columns")
         except Exception as e:
             logger.warning(f"Migration skipped (knowledge_bases): {e}")
+        finally:
+            _conn.close()
+
+    _kb_col_types = {c['name']: str(c.get('type', '')).upper() for c in _tbl_inspect.get_columns('knowledge_bases')}
+    if 'LONGTEXT' in _kb_col_types.get('CONTENT', ''):
+        _conn = engine.raw_connection()
+        try:
+            _cur = _conn.cursor()
+            _cur.execute("UPDATE knowledge_bases SET content = LEFT(content, 200) WHERE LENGTH(content) > 200")
+            _cur.execute("ALTER TABLE knowledge_bases MODIFY COLUMN content TEXT")
+            _conn.commit()
+            logger.info("Migrated knowledge_bases: content truncated and changed to TEXT")
+        except Exception as e:
+            logger.warning(f"Migration skipped (knowledge_bases content->TEXT): {e}")
         finally:
             _conn.close()
 
@@ -176,6 +205,9 @@ app.include_router(order_agent.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+image_gen_dir = os.path.join(settings.UPLOAD_DIR, "image_gen")
+os.makedirs(image_gen_dir, exist_ok=True)
 
 mineru_output_dir = os.path.join(settings.UPLOAD_DIR, "mineru_output")
 if os.path.exists(mineru_output_dir):
