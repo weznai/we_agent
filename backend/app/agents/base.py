@@ -17,7 +17,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from ..services.model_service import resolve_model_for_agent
+from ..models.llm_factory import resolve_llm_config
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,20 +58,20 @@ _patch_langchain_openai_for_reasoning()
 _memory_store = MemorySaver()
 
 
-def build_llm(db, model_id: Optional[int] = None, agent_type: str = "chat"):
-    model, provider = resolve_model_for_agent(db, model_id, agent_type)
+def build_llm(model_id=None, agent_type="chat"):
+    cfg = resolve_llm_config(model_id=model_id, agent_type=agent_type)
     logger.info(
-        f"Building LLM: model={model.name}, temperature={model.temperature}, max_tokens={model.max_tokens}"
+        f"Building LLM: model={cfg.model_name}, temperature={cfg.temperature}, max_tokens={cfg.max_tokens}"
     )
     kwargs = dict(
-        model=model.name,
-        openai_api_base=provider.api_base,
-        openai_api_key=provider.api_key,
-        temperature=float(model.temperature) if model.temperature else 0.7,
+        model=cfg.model_name,
+        openai_api_base=cfg.api_base,
+        openai_api_key=cfg.api_key,
+        temperature=cfg.temperature,
         streaming=True,
     )
-    if model.max_tokens:
-        kwargs["max_tokens"] = model.max_tokens
+    if cfg.max_tokens:
+        kwargs["max_tokens"] = cfg.max_tokens
     return ChatOpenAI(**kwargs)
 
 
@@ -150,13 +150,13 @@ def _make_pre_model_hook(system_prompt: str):
     return hook
 
 
-def make_agent(db, tools, prompt, model_id: Optional[int] = None, agent_type: str = "chat"):
+def make_agent(tools, prompt, model_id=None, agent_type="chat"):
     logger.info(
         f"Creating agent: agent_type={agent_type}, tools_count={len(tools)}, model_id={model_id}"
     )
     start_time = time.time()
 
-    llm = build_llm(db, model_id, agent_type)
+    llm = build_llm(model_id, agent_type)
 
     try:
         agent = create_react_agent(

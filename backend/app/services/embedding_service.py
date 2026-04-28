@@ -32,7 +32,7 @@ class EmbeddingService:
             self._api_client = None
             self._api_model = None
             self._api_dimension = None
-            self.dimension = self._model.get_sentence_embedding_dimension()
+            self.dimension = self._model.get_embedding_dimension()
             elapsed = time.time() - start_time
             logger.info(
                 f"[Embedding] Local model loaded: model={model_name_or_path}, "

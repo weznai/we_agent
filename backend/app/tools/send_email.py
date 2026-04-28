@@ -47,12 +47,11 @@ def _send_smtp(subject: str, html_content: str, receiver_emails: list[str]) -> s
             f"[Mail] Connecting to {cfg['host']}:{cfg['port']} "
             f"for sending to {receiver_emails}"
         )
-        context = ssl.create_default_context()
         smtp_obj = None
         last_err = None
         for attempt in range(3):
             try:
-                smtp_obj = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30, context=context)
+                smtp_obj = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30)
                 break
             except (smtplib.SMTPServerDisconnected, smtplib.SMTPException, OSError) as e:
                 last_err = e

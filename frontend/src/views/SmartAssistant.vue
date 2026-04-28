@@ -40,7 +40,7 @@
               <rect x="3" y="3" width="18" height="18" rx="5" fill="url(#salg)"/>
               <path d="M12 7v2M12 13v2M8 11h2M14 11h2" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
               <circle cx="12" cy="12" r="3" stroke="white" stroke-width="1.5" fill="none"/>
-              <defs><linearGradient id="salg" x1="3" y1="3" x2="24" y2="24"><stop stop-color="#8b5cf6"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs>
+              <defs><linearGradient id="salg" x1="3" y1="3" x2="24" y2="24"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
             </svg>
           </div>
           <span class="toolbar-title">智能助手</span>
@@ -78,13 +78,13 @@
               <circle cx="80" cy="80" r="70" fill="url(#saeg)" opacity="0.12"/>
               <circle cx="80" cy="80" r="50" fill="url(#saeg)" opacity="0.08"/>
               <rect x="45" y="45" width="70" height="70" rx="16" fill="url(#saeg)" opacity="0.15"/>
-              <circle cx="80" cy="80" r="12" stroke="#8b5cf6" stroke-width="3" fill="none" opacity="0.6"/>
-              <path d="M80 68v4M80 88v4M68 80h4M88 80h4" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
-              <circle cx="30" cy="40" r="3" fill="#8b5cf6" opacity="0.3"/>
-              <circle cx="135" cy="50" r="2.5" fill="#6366f1" opacity="0.3"/>
-              <circle cx="25" cy="120" r="2" fill="#8b5cf6" opacity="0.3"/>
-              <circle cx="140" cy="125" r="3.5" fill="#6366f1" opacity="0.2"/>
-              <defs><linearGradient id="saeg" x1="0" y1="0" x2="160" y2="160"><stop stop-color="#8b5cf6"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs>
+              <circle cx="80" cy="80" r="12" stroke="#2563eb" stroke-width="3" fill="none" opacity="0.6"/>
+              <path d="M80 68v4M80 88v4M68 80h4M88 80h4" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+              <circle cx="30" cy="40" r="3" fill="#2563eb" opacity="0.3"/>
+              <circle cx="135" cy="50" r="2.5" fill="#0ea5e9" opacity="0.3"/>
+              <circle cx="25" cy="120" r="2" fill="#2563eb" opacity="0.3"/>
+              <circle cx="140" cy="125" r="3.5" fill="#0ea5e9" opacity="0.2"/>
+              <defs><linearGradient id="saeg" x1="0" y1="0" x2="160" y2="160"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
             </svg>
           </div>
           <h3>智能助手</h3>
@@ -139,24 +139,44 @@
 
       <div class="chat-input-area">
         <div class="input-container">
-          <div class="input-wrapper">
-            <el-input
-              v-model="inputText"
-              type="textarea"
-              :rows="2"
-              placeholder="输入您的问题，按 Enter 发送..."
-              resize="none"
-              @keydown.enter.exact.prevent="sendMessage"
-            />
+          <div class="input-row">
+            <div class="input-wrapper">
+              <el-input
+                v-model="inputText"
+                type="textarea"
+                :rows="3"
+                :placeholder="chatMode === 'chat' ? '输入消息，按 Enter 发送...' : '输入指令，智能体将为您执行任务...'"
+                resize="none"
+                @keydown.enter.exact.prevent="sendMessage"
+              />
+              <div class="input-inner-bottom">
+                <span
+                  class="mode-option"
+                  :class="{ active: chatMode === 'chat' }"
+                  @click="switchMode('chat')"
+                >
+                  <el-icon :size="12"><ChatDotRound /></el-icon>
+                  聊天
+                </span>
+                <span
+                  class="mode-option"
+                  :class="{ active: chatMode === 'agent' }"
+                  @click="switchMode('agent')"
+                >
+                  <el-icon :size="12"><MagicStick /></el-icon>
+                  智能体
+                </span>
+              </div>
+            </div>
+            <el-button
+              type="primary"
+              class="send-btn"
+              :disabled="!inputText.trim() || isLoading"
+              @click="sendMessage"
+            >
+              <el-icon :size="18"><Promotion /></el-icon>
+            </el-button>
           </div>
-          <el-button
-            type="primary"
-            class="send-btn"
-            :disabled="!inputText.trim() || isLoading"
-            @click="sendMessage"
-          >
-            <el-icon :size="18"><Promotion /></el-icon>
-          </el-button>
         </div>
       </div>
     </div>
@@ -178,6 +198,7 @@ const sessions = ref([])
 const currentSession = ref('')
 const isLoading = ref(false)
 const sidebarCollapsed = ref(false)
+const chatMode = ref(localStorage.getItem('smart_assistant_mode') || 'chat')
 const selectedModelId = ref(localStorage.getItem('chat_selected_model_smart_assistant') ? Number(localStorage.getItem('chat_selected_model_smart_assistant')) : null)
 const availableModels = ref([])
 const providers = ref([])
@@ -204,6 +225,20 @@ function getProviderName(providerId) {
   return p ? (p.display_name || p.name) : ''
 }
 
+function switchMode(mode) {
+  if (chatMode.value === mode) return
+  chatMode.value = mode
+  localStorage.setItem('smart_assistant_mode', mode)
+  currentSession.value = ''
+  messages.value = []
+  newSession()
+  loadSessions()
+}
+
+function getAgentType() {
+  return chatMode.value === 'agent' ? 'smart_assistant' : 'chat'
+}
+
 async function loadModels() {
   try {
     const [allModels, allProviders] = await Promise.all([
@@ -218,7 +253,7 @@ async function loadModels() {
 async function loadSessions() {
   try {
     const all = await api.get('/chat/sessions')
-    sessions.value = all.filter(s => s.agent_type === 'smart_assistant')
+    sessions.value = all.filter(s => s.agent_type === getAgentType())
   } catch {}
 }
 
@@ -255,7 +290,7 @@ async function sendMessage() {
     const body = {
       session_id: currentSession.value,
       content: text,
-      agent_type: 'smart_assistant',
+      agent_type: getAgentType(),
     }
     if (selectedModelId.value) {
       body.model_id = selectedModelId.value
@@ -384,12 +419,12 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: white;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  background: var(--gradient-primary);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
   transition: var(--transition);
 
   &:hover {
-    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
     transform: translateY(-1px);
   }
 
@@ -409,8 +444,8 @@ onMounted(() => {
   transition: var(--transition);
 
   &:hover {
-    color: #8b5cf6;
-    background: rgba(139, 92, 246, 0.06);
+    color: var(--primary);
+    background: rgba(37, 99, 235, 0.06);
   }
 }
 
@@ -436,9 +471,9 @@ onMounted(() => {
   }
 
   &.active {
-    background: rgba(139, 92, 246, 0.07);
-    .session-text { color: #8b5cf6; font-weight: 600; }
-    .session-dot { background: #8b5cf6; }
+    background: rgba(37, 99, 235, 0.07);
+    .session-text { color: var(--primary); font-weight: 600; }
+    .session-dot { background: var(--primary); }
     .delete-icon { color: var(--text-muted); &:hover { color: var(--danger); } }
   }
 
@@ -580,9 +615,9 @@ onMounted(() => {
   &.user {
     flex-direction: row-reverse;
     .message-bubble {
-      background: #f0ecfb;
+      background: #eef3fd;
       color: var(--text-primary);
-      border: 1px solid #e8e2f5;
+      border: 1px solid #e4eaf4;
       border-radius: 20px 20px 4px 20px;
     }
   }
@@ -592,7 +627,7 @@ onMounted(() => {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 20px 20px 20px 4px;
-      box-shadow: 0 1px 4px rgba(139, 92, 246, 0.05);
+      box-shadow: 0 1px 4px rgba(37, 99, 235, 0.05);
     }
   }
 }
@@ -614,13 +649,13 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .ai-avatar {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, #0ea5e9, #06b6d4);
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
 }
 
 .message-content { max-width: 68%; }
@@ -646,9 +681,9 @@ onMounted(() => {
     transition: var(--transition);
 
     &:hover {
-      color: #8b5cf6;
-      border-color: #8b5cf6;
-      background: rgba(139, 92, 246, 0.04);
+      color: var(--primary);
+      border-color: var(--primary);
+      background: rgba(37, 99, 235, 0.04);
     }
 
     .el-icon { font-size: 14px; }
@@ -666,11 +701,11 @@ onMounted(() => {
   :deep(ul), :deep(ol) { padding-left: 20px; margin: 4px 0; }
   :deep(li) { margin-bottom: 2px; }
   :deep(code) {
-    background: rgba(139, 92, 246, 0.08);
+    background: rgba(37, 99, 235, 0.08);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 13px;
-    color: #7c3aed;
+    color: var(--primary-dark);
   }
   :deep(pre) {
     background: #1e293b;
@@ -688,7 +723,7 @@ onMounted(() => {
     }
   }
   :deep(blockquote) {
-    border-left: 3px solid #8b5cf6;
+    border-left: 3px solid var(--primary-light);
     padding-left: 12px;
     margin: 8px 0;
     color: var(--text-secondary);
@@ -704,13 +739,13 @@ onMounted(() => {
       text-align: left;
       font-size: 13px;
     }
-    th { background: rgba(139, 92, 246, 0.04); font-weight: 600; }
+    th { background: rgba(37, 99, 235, 0.04); font-weight: 600; }
   }
 }
 
 .message.user .message-bubble {
   :deep(pre) { background: #e4e9f0; }
-  :deep(code) { background: rgba(139, 92, 246, 0.08); color: #7c3aed; }
+  :deep(code) { background: rgba(37, 99, 235, 0.08); color: var(--primary-dark); }
 }
 
 .message-bubble.typing {
@@ -722,7 +757,7 @@ onMounted(() => {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    background: linear-gradient(135deg, #2563eb, #0ea5e9);
     animation: typing 1.4s ease-in-out infinite;
 
     &:nth-child(2) { animation-delay: 0.2s; }
@@ -745,25 +780,67 @@ onMounted(() => {
   max-width: 800px;
   margin: 0 auto;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-inner-bottom {
+  position: absolute;
+  left: 16px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 1;
+}
+
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+  user-select: none;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+
+  &.active {
+    color: var(--primary);
+    border-color: rgba(37, 99, 235, 0.3);
+    background: rgba(37, 99, 235, 0.08);
+  }
+}
+
+.input-row {
+  display: flex;
   gap: 12px;
   align-items: flex-end;
 }
 
 .input-wrapper {
   flex: 1;
+  position: relative;
 
   :deep(.el-textarea__inner) {
-    background: #f0f5ff !important;
+    background: #ffffff !important;
     border: 0.5px solid #dbe4f3 !important;
     border-radius: 14px !important;
-    padding: 13px 18px;
+    padding: 13px 18px 28px;
     color: var(--text-primary) !important;
     font-size: 14px;
     line-height: 1.5;
 
     &:focus {
-      border-color: #8b5cf6 !important;
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
+      border-color: var(--primary) !important;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
     }
   }
 }
@@ -774,13 +851,13 @@ onMounted(() => {
   border-radius: 14px;
   flex-shrink: 0;
   font-size: 18px;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+  background: var(--gradient-primary) !important;
   border: none !important;
   transition: all 0.25s ease !important;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4) !important;
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4) !important;
     transform: translateY(-1px);
   }
 

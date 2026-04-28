@@ -27,6 +27,17 @@ def get_system_prompt(with_knowledge: bool = False) -> str:
 7. 每张图片只出现一次
 8. 图片的 alt 文本应包含来源标注，如：![参考资料1-产品规格图(产品手册.pdf)](/api/knowledge/mineru-image/abc.jpg)
 </knowledge_base>
+
+<image_url_rules>
+重要：系统中存在两种不同来源的图片，必须使用不同的URL路径，绝对不能混用：
+
+1. 知识库图片：仅用于 knowledge_search 工具返回的 image_files 中的图片
+   URL格式：/api/knowledge/mineru-image/{文件名}
+
+2. AI生成图片：仅用于 generate_image 工具生成的图片
+   URL格式：必须直接使用工具返回结果中 url 字段的值（如 /uploads/image_gen/xxx.png）
+   严禁将AI生成图片的文件名拼接到 /api/knowledge/mineru-image/ 路径下
+</image_url_rules>
 """
 
     return f"""<role>
@@ -80,5 +91,7 @@ def get_system_prompt(with_knowledge: bool = False) -> str:
 - 写操作必须获得用户确认
 - API返回中包含 "_status": 200 表示调用成功，不要将成功的响应当作异常
 - 不要重复执行同一操作，如取消订单只需调用 cancelOrder，不需要再调用 updateOrderStatus
+- 当用户的请求包含多个任务时（如"生成图片并发送到邮箱"），必须依次调用所有相关工具完成全部任务，不能只完成第一个就停止
+- 如果用户要求生成图片并发送邮件，正确的流程是：先调用 generate_image 生成图片，然后调用 send_email 将图片内容发送到指定邮箱
 </critical_reminders>
 """

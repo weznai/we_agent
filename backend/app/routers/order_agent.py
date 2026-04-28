@@ -39,7 +39,7 @@ async def order_agent_chat_stream(
         chunk_count = 0
         try:
             async for event_type, chunk in stream_order_agent_response(
-                db, session_id, content,
+                session_id, content,
                 user_id=current_user.id,
                 model_id=model_id,
                 knowledge_group_id=knowledge_group_id,

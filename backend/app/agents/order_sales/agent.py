@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 AGENT_TYPE = "customer_service"
 
 
-def create_agent(db, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
+def create_agent(user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
     logger.info(f"Creating order_sales agent: model_id={model_id}, user_id={user_id}, knowledge_group_id={knowledge_group_id}")
 
     tools = get_tools(AGENT_TYPE)
@@ -24,14 +24,14 @@ def create_agent(db, user_id: int = None, model_id: Optional[int] = None, knowle
             logger.warning(f"Failed to add knowledge search tool: {e}")
 
     prompt = get_system_prompt(with_knowledge=user_id is not None)
-    return make_agent(db, tools, prompt, model_id, agent_type=AGENT_TYPE)
+    return make_agent(tools, prompt, model_id, agent_type=AGENT_TYPE)
 
 
-async def stream_response(db, session_id: str, user_content: str, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
+async def stream_response(session_id: str, user_content: str, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
     logger.info(f"[OrderSales] Starting stream: session={session_id}, content_length={len(user_content)}, model_id={model_id}")
     start_time = time.time()
 
-    agent = create_agent(db, user_id=user_id, model_id=model_id, knowledge_group_id=knowledge_group_id)
+    agent = create_agent(user_id=user_id, model_id=model_id, knowledge_group_id=knowledge_group_id)
     chunk_count = 0
     async for chunk in stream_agent_response(agent, session_id, user_content):
         chunk_count += 1

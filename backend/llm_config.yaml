@@ -161,7 +161,7 @@ mappings:
     model: deepseek-chat
     priority: 10
 
-  - agent_type: order_sales
+  - agent_type: smart_assistant
     provider: deepseek
     model: deepseek-chat
     priority: 10

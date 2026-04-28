@@ -46,6 +46,10 @@
             <el-icon class="menu-icon-child"><ChatDotRound /></el-icon>
             <template #title>智能聊天</template>
           </el-menu-item>
+          <el-menu-item index="/smart-assistant">
+            <el-icon class="menu-icon-child"><Monitor /></el-icon>
+            <template #title>智能助手</template>
+          </el-menu-item>
           <el-menu-item index="/translation">
             <el-icon class="menu-icon-child"><Document /></el-icon>
             <template #title>智能翻译</template>
@@ -53,10 +57,6 @@
           <el-menu-item index="/customer-service">
             <el-icon class="menu-icon-child"><Service /></el-icon>
             <template #title>智能客服</template>
-          </el-menu-item>
-          <el-menu-item index="/smart-assistant">
-            <el-icon class="menu-icon-child"><Monitor /></el-icon>
-            <template #title>智能助手</template>
           </el-menu-item>
           <el-menu-item index="/smart-measurement">
             <el-icon class="menu-icon-child"><DataAnalysis /></el-icon>

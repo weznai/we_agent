@@ -100,7 +100,7 @@ async def get_llm_response(
             temperature=float(model.temperature) if model.temperature else 0.7,
         )
         if model.max_tokens:
-            kwargs["max_tokens"] = model.max_tokens
+            kwargs["max_tokens"] = max(1, min(model.max_tokens, 393216))
 
         response = await client.chat.completions.create(**kwargs)
 
@@ -149,7 +149,7 @@ async def stream_llm_response(
             stream=True,
         )
         if model.max_tokens:
-            kwargs["max_tokens"] = model.max_tokens
+            kwargs["max_tokens"] = max(1, min(model.max_tokens, 393216))
 
         stream = await client.chat.completions.create(**kwargs)
         async for chunk in stream:

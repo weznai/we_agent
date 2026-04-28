@@ -11,19 +11,19 @@ logger = get_logger(__name__)
 AGENT_TYPE = "smart_assistant"
 
 
-def create_agent(db, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
-    logger.info(f"Creating smart_assistant agent: model_id={model_id}, user_id={user_id}")
+def create_agent(model_id: Optional[int] = None, **kwargs):
+    logger.info(f"Creating smart_assistant agent: model_id={model_id}")
 
     tools = get_tools(AGENT_TYPE)
     prompt = get_system_prompt()
-    return make_agent(db, tools, prompt, model_id, agent_type=AGENT_TYPE)
+    return make_agent(tools, prompt, model_id, agent_type=AGENT_TYPE)
 
 
-async def stream_response(db, session_id: str, user_content: str, user_id: int = None, model_id: Optional[int] = None, knowledge_group_id: Optional[int] = None):
+async def stream_response(session_id: str, user_content: str, model_id: Optional[int] = None, **kwargs):
     logger.info(f"[SmartAssistant] Starting stream: session={session_id}, content_length={len(user_content)}, model_id={model_id}")
     start_time = time.time()
 
-    agent = create_agent(db, user_id=user_id, model_id=model_id, knowledge_group_id=knowledge_group_id)
+    agent = create_agent(model_id=model_id)
     chunk_count = 0
     async for chunk in stream_agent_response(agent, session_id, user_content):
         chunk_count += 1
